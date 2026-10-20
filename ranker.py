@@ -3,7 +3,7 @@
 
 Pipeline (one call to run()):
   1. discover  two funnels
-               hunt: Yahoo screen of every US-listed $50M–$20B stock growing revenue 25%+ (fundamentals first)
+               hunt: Yahoo screen of every US-listed $50M–$500B stock growing revenue 25%+ (fundamentals first)
                heat: names hot in news (Massive, Yahoo), on Reddit/X (scraper.py), small-cap gainers/actives
   2. gate      info for every candidate, then hard filters against pumps, dilution machines,
                pre-revenue story stocks, OTC/illiquid names and reverse splits (rejects are kept, with reasons)
@@ -40,12 +40,13 @@ CACHE = ROOT / "cache"
 
 env = os.environ.get
 MIN_MCAP = float(env("PULSE_MIN_MCAP", 5e7))
-MAX_MCAP = float(env("PULSE_MAX_MCAP", 2e10))
+MAX_MCAP = float(env("PULSE_MAX_MCAP", 5e11))
 MIN_PRICE = float(env("PULSE_MIN_PRICE", 1))
 MIN_DOLLAR_VOL = float(env("PULSE_MIN_DOLLAR_VOL", 1e6))
 MIN_REVENUE = float(env("PULSE_MIN_REVENUE", 1e7))
-HUNT_PAGES = int(env("PULSE_HUNT_PAGES", 3))       # 250 screen rows per page
-HUNT_DEEP = int(env("PULSE_HUNT_DEEP", 60))        # screen names that get full research
+HUNT_PAGES = int(env("PULSE_HUNT_PAGES", 5))       # 250 screen rows per page, smallest caps first
+HUNT_DEEP = int(env("PULSE_HUNT_DEEP", 70))        # screen names that get full research
+HUNT_BIG = int(env("PULSE_HUNT_BIG", 20))          # of those, slots kept for proven names over $10B
 HEAT_DEEP = int(env("PULSE_HEAT_DEEP", 50))        # hot names that get full research
 NEWS_HOURS = int(env("PULSE_NEWS_HOURS", 48))
 SOCIAL_MAX_AGE_MIN = float(env("PULSE_SOCIAL_MAX_AGE_MIN", 50))
@@ -58,8 +59,11 @@ SCREEN_EXCHANGES = ["NMS", "NGM", "NCM", "NYQ", "ASE"]
 PR_WIRES = ("globenewswire", "globe newswire", "pr newswire", "prnewswire", "business wire", "businesswire",
             "accesswire", "access newswire", "newsfile", "newsdirect", "issuer direct", "einpresswire", "pressat")
 
-WEIGHTS = {"growth": 0.25, "quality": 0.18, "estimates": 0.14, "valuation": 0.10, "momentum": 0.18, "early": 0.15}
+WEIGHTS = {"growth": 0.25, "quality": 0.18, "estimates": 0.12, "valuation": 0.08, "momentum": 0.17, "early": 0.20}
 BUY_AT, AVOID_BELOW, FLAG_COST = 70, 42, 7
+BIG_CAP, BIG_BUY_AT = 5e10, 75   # names everyone already knows have to earn a BUY
+# diamond in the rough: small, barely covered, growing fast, financially sound, nothing wrong with it
+DIAMOND_MAX_MCAP, DIAMOND_MAX_ANALYSTS, DIAMOND_MIN_SCORE = 3e9, 6, 60
 EARNINGS_BLACKOUT_D = 2
 
 INFO_KEYS = [
@@ -313,7 +317,7 @@ def social_mentions() -> tuple[dict, dict]:
 
 
 def hunt_screen() -> tuple[list[dict], int]:
-    """Every US-listed $50M–$20B stock growing quarterly revenue 25%+ with real liquidity."""
+    """Every US-listed $50M–$500B stock growing quarterly revenue 25%+ with real liquidity."""
     q = EQ("and", [
         EQ("btwn", ["intradaymarketcap", MIN_MCAP, MAX_MCAP]),
         EQ("is-in", ["exchange", *SCREEN_EXCHANGES]),
@@ -661,7 +665,7 @@ METRICS = [
     ("off_high", "momentum", "From 52w high", pct, lambda v: lin(v, -0.50, 0.0)),
     ("above50", "momentum", "Above 50-day avg", lambda v: "yes" if v else "no", lambda v: v),
     ("above200", "momentum", "Above 200-day avg", lambda v: "yes" if v else "no", lambda v: v),
-    ("log_mcap", "early", "Market cap", lambda v: money(10 ** v), lambda v: lin(v, math.log10(2e10), 8.0)),
+    ("log_mcap", "early", "Market cap", lambda v: money(10 ** v), lambda v: lin(v, math.log10(MAX_MCAP), 8.0)),
     ("analysts", "early", "Analyst coverage", lambda v: f"{v:.0f}", lambda v: lin(v, 20, 2)),
     ("inst_fit", "early", "Institutional ownership (sweet spot ~40%)", lambda v: f"±{v * 100:.0f}pt from 40%",
      lambda v: lin(v, 0.5, 0.0)),
@@ -771,13 +775,19 @@ def score(sym, info, deep, p, sec, social, heads) -> dict:
 
     if len(flags) >= 2 or composite < AVOID_BELOW:
         tier = "AVOID"
-    elif composite >= BUY_AT and not flags and coverage >= 0.6:
+    elif composite >= (BIG_BUY_AT if (x["mcap"] or 0) > BIG_CAP else BUY_AT) and not flags and coverage >= 0.6:
         tier = "BUY"
         if days_to_er is not None and 0 <= days_to_er <= EARNINGS_BLACKOUT_D:
             tier = "WATCH"
             cautions.insert(0, "BUY-grade, held to WATCH until earnings print")
     else:
         tier = "WATCH"
+    if tier == "WATCH" and (x["mcap"] or 0) > BIG_CAP and composite >= BUY_AT and not flags:
+        cautions.insert(0, f"Big name: needs {BIG_BUY_AT} to be a BUY")
+
+    diamond = (tier != "AVOID" and not flags and composite >= DIAMOND_MIN_SCORE
+               and (x["mcap"] or 1e15) <= DIAMOND_MAX_MCAP and x["analysts"] <= DIAMOND_MAX_ANALYSTS
+               and (pill["growth"] or 0) >= 65 and (pill["quality"] or 0) >= 50)
 
     contrib.sort(key=lambda c: c["impact"])
     news_tones = [h["tone"] for h in heads]
@@ -786,7 +796,7 @@ def score(sym, info, deep, p, sec, social, heads) -> dict:
         "ticker": sym, "name": info.get("shortName") or info.get("longName") or sym,
         "sector": sector, "industry": info.get("industry"), "market_cap": x["mcap"], "price": x["price"],
         "about": (info.get("longBusinessSummary") or "")[:420], "website": info.get("website"),
-        "score": round(composite, 1), "tier": tier, "pillars": pill, "coverage": round(coverage, 2),
+        "score": round(composite, 1), "tier": tier, "diamond": diamond, "pillars": pill, "coverage": round(coverage, 2),
         "flags": flags, "cautions": cautions,
         "strengths": [c for c in reversed(contrib) if c["impact"] > 0][:4],
         "weaknesses": [c for c in contrib if c["impact"] < 0][:4], "metrics": contrib,
@@ -829,12 +839,20 @@ def write_read(rows, rejected, market, news_overall, social_overall, hunt_total)
                     f"Reddit/X posts." if social_overall.get("posts") else "."))
     parts.append(f"Screened {hunt_total:,} growers, researched {len(rows) + len(rejected)}, "
                  f"{len(rejected)} thrown out as pump, dilution or liquidity risk.")
+    gems = [r for r in rows if r.get("diamond")]
+    if gems:
+        g = gems[0]
+        parts.append(f"{len(gems)} diamond{'s' if len(gems) != 1 else ''} in the rough — best: {g['ticker']} "
+                     f"({money(g['market_cap'])}, {g['analysts']:.0f} analysts, {g['industry'] or g['sector']}).")
+    others = [r for r in buys if not r.get("diamond")]
     if buys:
-        b = buys[0]
+        parts.append(f"{len(buys)} clear every bar.")
+    if others:
+        b = others[0]
         why = ", ".join(f"{s['label'].lower()} {s['value']}" for s in b["strengths"][:2])
-        parts.append(f"{len(buys)} clear every bar. Best setup: {b['ticker']} ({money(b['market_cap'])}, "
+        parts.append(f"Best setup beyond the diamonds: {b['ticker']} ({money(b['market_cap'])}, "
                      f"{b['industry'] or b['sector']}) — {why}.")
-    else:
+    if not buys:
         parts.append("Nothing clears every bar this run — patience is a position.")
     sect = Counter(r["sector"] for r in rows if r["tier"] == "BUY" and r["sector"])
     if sect:
@@ -853,8 +871,11 @@ def run(verbose: bool = True) -> dict:
     mheat, yheat = massive_news(heads), yahoo_topic_news(heads)
     lists = yahoo_lists()
     hunt_rows, hunt_total = hunt_screen()
-    hunt = sorted(((prerank(q), q["symbol"]) for q in hunt_rows if to_yahoo(q["symbol"])), reverse=True)
-    hunt_syms = [s for v, s in hunt if v >= 0][:HUNT_DEEP]
+    hunt = sorted(((prerank(q), q["symbol"], num(q.get("marketCap")) or 0) for q in hunt_rows
+                   if to_yahoo(q["symbol"])), reverse=True)
+    big = [s for v, s, m in hunt if v >= 0 and m > 1e10][:HUNT_BIG]
+    small = [s for v, s, m in hunt if v >= 0 and m <= 1e10][:HUNT_DEEP - len(big)]
+    hunt_syms = small + big
     log(f"[hunt] {hunt_total} growers screened → {len(hunt_syms)} shortlisted")
 
     heat = Counter()
@@ -935,7 +956,7 @@ def run(verbose: bool = True) -> dict:
 
     out = clean({
         "generated_at": now_utc().isoformat(), "took_s": round(time.time() - t0, 1),
-        "universe": len(rows), "counts": Counter(r["tier"] for r in rows),
+        "universe": len(rows), "counts": Counter(r["tier"] for r in rows), "diamonds": sum(bool(r.get("diamond")) for r in rows),
         "read": write_read(rows, rejected, market, news_overall, social_overall, hunt_total),
         "summary": {"hunt_total": hunt_total, "researched": len(rows) + len(rejected), "rejected": len(rejected),
                     "reject_reasons": reject_reasons.most_common(6), "market": market,

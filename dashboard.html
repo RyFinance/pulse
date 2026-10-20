@@ -108,6 +108,7 @@ section{padding-top:48px}
 .tag.flag{border-color:var(--down);color:var(--down)}
 .tag.caut{border-color:color-mix(in srgb,var(--warn) 60%,transparent);color:var(--warn)}
 .tag.new{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tag.gem{background:#121212;color:#c6f432;border-color:#c6f432;font-weight:700}
 .empty{padding:28px;color:var(--mute);font-size:13px}
 
 /* sectors + rejects */
@@ -215,6 +216,11 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
   </section>
 
   <section>
+    <div class="sh"><h2>◆ Diamonds in the rough</h2><span class="aside" id="gemN">under $3B · ≤6 analysts · fast growth · clean books</span></div>
+    <div class="cards" id="gems"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section>
     <div class="sh"><h2>Best setups</h2><span class="aside" id="buyN">—</span></div>
     <div class="cards" id="cards"><div class="empty">Loading…</div></div>
   </section>
@@ -240,6 +246,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
       <button class="pill" data-f="BUY">Buy</button>
       <button class="pill" data-f="WATCH">Watch</button>
       <button class="pill" data-f="AVOID">Avoid</button>
+      <button class="pill" data-f="GEM" title="Small, under-covered, fast-growing, no red flags">◆ Diamonds</button>
       <button class="pill" data-f="HUNT" title="Found by the fundamentals screen, not by hype">Screen-found</button>
       <input class="search" id="q" placeholder="ticker, name, industry…" autocomplete="off">
     </div>
@@ -451,7 +458,7 @@ void main(){vec2 uv=gl_FragCoord.xy/R-.5;uv.x*=R.x/R.y;
 function stat(l,v,s){return`<div class="stat"><div class="lbl">${l}</div><div class="v">${v}</div><div class="s">${s||"&nbsp;"}</div></div>`}
 function renderRead(){
   const S=D.summary||{},M=S.market||{},so=S.social||{};
-  const r=esc(D.read||"").replace(/Best setup: ([A-Z.\-]+)/,(m,t)=>`Best setup: <b>${t}</b>`);
+  const r=esc(D.read||"").replace(/best: ([A-Z.\-]+)/,(m,t)=>`best: <b>${t}</b>`).replace(/diamonds: ([A-Z.\-]+)/,(m,t)=>`diamonds: <b>${t}</b>`);
   $("#read").innerHTML=r||"No read yet.";
   const mk=k=>{const m=M[k]||{};return [pct(m.r1m,1),`1D ${m.r1d==null?"—":(m.r1d>=0?"+":"")+(m.r1d*100).toFixed(1)+"%"}`]};
   const [iwm,iwmS]=mk("IWM"),[spy,spyS]=mk("SPY"),[qqq,qqqS]=mk("QQQ");const vix=M["^VIX"]||{};
@@ -460,7 +467,7 @@ function renderRead(){
     stat("VIX",vix.price==null?"—":vix.price.toFixed(1),vix.r5d==null?"":"5D "+(vix.r5d>=0?"+":"")+(vix.r5d*100).toFixed(0)+"%"),
     stat("News tone",toneWord(S.news_tone),`${S.news_tone==null?"—":S.news_tone.toFixed(2)} · ${S.news_items||0} headlines`),
     stat("Social tone",toneWord(so.tone),so.posts?`${so.tone.toFixed(2)} · ${so.posts.toLocaleString()} posts · ${ago(so.scraped_at)}`:"no scrape"),
-    stat("Screened",(S.hunt_total||0).toLocaleString(),"$50M–$20B, revenue +25%"),
+    stat("Screened",(S.hunt_total||0).toLocaleString(),`${cap((D.config||{}).min_mcap)}–${cap((D.config||{}).max_mcap)}, revenue +25%`),
     stat("Researched",S.researched??"—",`${D.universe||0} passed every filter`),
     stat("Filtered out",S.rejected??"—","pump · dilution · liquidity"),
   ].join("");
@@ -469,7 +476,7 @@ function renderRead(){
 }
 function bars(p){return`<div class="bars">${PIL.map(([k,l])=>{const s=p[k];return`<div class="bar"><div class="t"><span>${l}</span><b>${s==null?"–":Math.round(s)}</b></div><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div></div>`}).join("")}</div>`}
 function card(r){
-  const tags=[r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
+  const tags=[r.diamond?'<span class="tag gem">◆ diamond</span>':"",r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
     ...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.slice(0,2).map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
   return`<div class="card" data-t="${esc(r.ticker)}">
     <div class="row1"><div><div class="rk">#${r.rank}${r.rank_change?` · ${r.rank_change>0?"▲":"▼"}${Math.abs(r.rank_change)}`:""}</div><div class="tk">${esc(r.ticker)}</div></div><span class="score ${r.tier}">${r.score.toFixed(0)}</span></div>
@@ -478,7 +485,10 @@ function card(r){
     <div class="why">${r.strengths.slice(0,3).map(s=>`<span>${esc(s.label)} ${esc(s.value)}</span>`).join("")}</div>
     ${tags?`<div class="tags">${tags}</div>`:""}</div>`}
 function renderCards(){
-  const R=D.results;let top=R.filter(r=>r.tier==="BUY");
+  const R=D.results,gems=R.filter(r=>r.diamond).slice(0,9);
+  $("#gems").innerHTML=gems.length?gems.map(card).join(""):'<div class="empty">No diamonds clear the bar this run — that\'s the point of the bar.</div>';
+  $("#gemN").textContent=`${D.diamonds||0} found · under $3B · ≤6 analysts · fast growth · clean books`;
+  let top=R.filter(r=>r.tier==="BUY"&&!r.diamond);
   if(top.length<4)top=top.concat(R.filter(r=>r.tier==="WATCH").slice(0,8-top.length));
   top=top.slice(0,12);
   $("#buyN").textContent=`${(D.counts||{}).BUY||0} buy · ${(D.counts||{}).WATCH||0} watch · ${(D.counts||{}).AVOID||0} avoid`;
@@ -498,7 +508,7 @@ function renderRejects(){
 
 const COLS=[
   {k:"rank",l:"#",v:r=>r.rank,f:r=>`<span class="dim">${r.rank}</span>`},
-  {k:"ticker",l:"Ticker",v:r=>r.ticker,f:r=>`<b>${esc(r.ticker)}</b>${r.new?' <span class="tag new">new</span>':""}`},
+  {k:"ticker",l:"Ticker",v:r=>r.ticker,f:r=>`<b>${esc(r.ticker)}</b>${r.diamond?' <span class="tag gem">◆</span>':""}${r.new?' <span class="tag new">new</span>':""}`},
   {k:"tier",l:"Call",v:r=>({BUY:0,WATCH:1,AVOID:2})[r.tier],f:r=>`<span class="tier ${r.tier}">${r.tier}</span>`},
   {k:"score",l:"Score",c:"r",v:r=>r.score,f:r=>`<b>${r.score.toFixed(1)}</b>`},
   {k:"pil",l:"G Q E V M Ea",v:r=>r.score,f:r=>`<span class="pp">${PIL.map(([k])=>{const s=r.pillars[k];return`<i style="background:${s>=70?"var(--signal)":"transparent"};color:${s>=70?"var(--on-signal)":s<35?"var(--down)":"var(--ink-2)"}">${s==null?"–":Math.round(s)}</i>`}).join("")}</span>`},
@@ -520,7 +530,7 @@ const COLS=[
 function renderTable(){
   $("#thead").innerHTML=COLS.map(c=>`<th class="${c.c||""} ${SORT.k===c.k?"on":""}" data-k="${c.k}">${c.l}${SORT.k===c.k?(SORT.dir>0?" ↑":" ↓"):""}</th>`).join("");
   const q=$("#q").value.trim().toLowerCase(),col=COLS.find(c=>c.k===SORT.k);
-  const rs=D.results.filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:r.tier===FILTER))
+  const rs=D.results.filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:FILTER==="GEM"?r.diamond:r.tier===FILTER))
     .filter(r=>!q||[r.ticker,r.name,r.sector,r.industry].join(" ").toLowerCase().includes(q))
     .sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*SORT.dir});
   $("#tblN").textContent=`${rs.length} of ${D.results.length}`;

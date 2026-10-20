@@ -4,8 +4,9 @@ Hunts small and niche companies that are quietly dominating — before everyone 
 Not "MU has crazy revenue"; the point is finding the next one while it's $500M, not $500B.
 
 ```
-hunt      Yahoo screen: every US-listed $50M–$20B stock with quarterly revenue +25%,
-          pre-ranked on trend, extension, size and improving EPS → top 60 researched
+hunt      Yahoo screen: every US-listed $50M–$500B stock with quarterly revenue +25%,
+          pre-ranked on trend, extension, size and improving EPS → top 70 researched
+          (50 under $10B, 20 proven names above)
 heat      names hot in news (Massive, Yahoo), Reddit/X cashtags (scraper.py), small-cap gainers
           → in-band names only (megacaps dropped) → top 50 researched
 gate      hard rejects: OTC, < $1, < $1M/day traded, < $10M revenue, shares +30%/yr, reverse split
@@ -19,10 +20,13 @@ read      news + social tone (VADER), IWM/SPY/QQQ/VIX backdrop, sector heat, wri
 |---|---|---|
 | Growth | 25% | revenue growth, latest-quarter YoY, acceleration, gross-margin expansion, forward estimates |
 | Quality | 18% | margins and their trend, FCF, cash runway, no dilution, low leverage |
-| Estimates | 14% | net EPS revisions, estimate drift, surprises, beat rate, target upside |
-| Valuation | 10% | EV/sales per point of growth, forward P/E, PEG |
-| Momentum | 18% | 3m/6m vs SPY, 1m, off 52w high, above 50/200d |
-| Early | 15% | smaller cap, few analysts, institutions near 40% (not crowded), not extended, 1y not parabolic |
+| Estimates | 12% | net EPS revisions, estimate drift, surprises, beat rate, target upside |
+| Valuation | 8% | EV/sales per point of growth, forward P/E, PEG |
+| Momentum | 17% | 3m/6m vs SPY, 1m, off 52w high, above 50/200d |
+| Early | 20% | smaller cap, few analysts, institutions near 40% (not crowded), not extended, 1y not parabolic |
+
+BUY needs 70 (75 for names over $50B — the ones everyone already knows have to earn it).
+**◆ Diamonds in the rough**: under $3B, ≤ 6 analysts, growth pillar ≥ 65, quality ≥ 50, score ≥ 60, no red flags.
 
 Red flags (−7 each, 2+ = AVOID): dilution > 15%, recent offering/shelf (SEC), short float > 25%, +50% in 5d,
 press-release-heavy news, social hype with no independent coverage, estimate cuts, broken chart, D/E > 3.
