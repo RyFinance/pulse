@@ -9,7 +9,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import resource
+from urllib.parse import parse_qs, urlparse
 import threading
 import time
 import traceback
@@ -76,6 +78,16 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/rankings":
             body = ranker.OUT.read_bytes() if ranker.OUT.exists() else b'{"results":[]}'
             self._send(200, body)
+        elif path in ("/api/chart", "/api/compare"):
+            q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            sym, rng = (q.get("t") or "").upper(), q.get("r", "1M")
+            if not re.fullmatch(r"[A-Z0-9.\-]{1,10}", sym) or (path == "/api/chart" and rng not in ranker.CHART_RANGES):
+                return self._send(400, b'{"error":"bad ticker or range"}')
+            try:
+                data = ranker.chart(sym, rng) if path == "/api/chart" else ranker.compare(sym)
+                self._send(200, json.dumps(ranker.clean(data)).encode())
+            except Exception as e:
+                self._send(502, json.dumps({"error": f"{type(e).__name__}: {e}"}).encode())
         elif path == "/api/status":
             self._send(200, json.dumps({**state, "interval_min": INTERVAL_MIN}).encode())
         else:

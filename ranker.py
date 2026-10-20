@@ -989,3 +989,124 @@ if __name__ == "__main__":
         print(f"{r['rank']:>3} {r['ticker']:<6} {r['tier']:<5} {r['score']:>5}  {money(r['market_cap']):>8}  "
               f"{(r['industry'] or '')[:28]:<28} {r['name'][:26]}")
     print("\nrejected:", ", ".join(f"{r['ticker']} ({r['reasons'][0]})" for r in res["rejected"][:12]))
+
+
+# ---------------------------------------------------------------- on-demand: chart + competitors
+_mem: dict = {}
+
+
+def _memo(key, ttl_s, fn):
+    hit = _mem.get(key)
+    if hit and time.time() - hit[0] < ttl_s:
+        return hit[1]
+    val = fn()
+    _mem[key] = (time.time(), val)
+    return val
+
+
+CHART_RANGES = {  # range -> (yfinance period or days back, interval, cache seconds)
+    "1D": ("1d", "5m", 120), "1W": ("5d", "30m", 600), "1M": ("1mo", "60m", 1800), "3M": ("3mo", "1d", 3600),
+    "1Y": ("1y", "1d", 3600), "3Y": (3 * 365, "1wk", 6 * 3600), "5Y": ("5y", "1wk", 6 * 3600),
+    "10Y": ("10y", "1mo", 6 * 3600),
+}
+
+
+def chart(sym: str, rng: str) -> dict:
+    """Close prices for one range, Apple-Stocks style: line only, previous close for 1D."""
+    period, interval, ttl = CHART_RANGES[rng]
+
+    def go():
+        t = yf.Ticker(sym)
+        if isinstance(period, int):
+            h = t.history(start=str(dt.date.today() - dt.timedelta(days=period)), interval=interval, auto_adjust=True)
+        else:
+            h = t.history(period=period, interval=interval, auto_adjust=True)
+        if rng == "1D" and len(h) < 2:  # pre-market: show the last full session
+            h = t.history(period="5d", interval="5m", auto_adjust=True)
+            if len(h):
+                h = h[h.index.date == h.index[-1].date()]
+        h = h["Close"].dropna()
+        if h.empty:
+            return {"ticker": sym, "range": rng, "points": []}
+        pts = [[int(ts.timestamp()), round(float(v), 4)] for ts, v in h.items()]
+        out = {"ticker": sym, "range": rng, "points": pts, "last": pts[-1][1], "high": max(v for _, v in pts),
+               "low": min(v for _, v in pts)}
+        if rng == "1D":
+            try:
+                prev = num(t.fast_info.get("previousClose"))
+            except Exception:
+                prev = None
+            out["prev_close"] = prev
+            day = h.index[0]
+            out["session"] = [int(day.replace(hour=9, minute=30).timestamp()), int(day.replace(hour=16, minute=0).timestamp())]
+        base = out.get("prev_close") or pts[0][1]
+        out["base"] = base
+        out["change"] = round(pts[-1][1] - base, 4)
+        out["change_pct"] = round(pts[-1][1] / base - 1, 5) if base else None
+        return out
+
+    return _memo(("chart", sym, rng), ttl, go)
+
+
+def peers(sym: str) -> list[str]:
+    key = env("FINNHUB_API_KEY")
+    if not key:
+        return []
+
+    def go():
+        try:
+            r = requests.get("https://finnhub.io/api/v1/stock/peers", params={"symbol": sym, "token": key}, timeout=10)
+            return [p for p in r.json() if isinstance(p, str) and p != sym and to_yahoo(p) and "." not in p]
+        except Exception:
+            return []
+
+    return cached(f"{sym}.peers.json", 24 * 7, go) or []
+
+
+def compare(sym: str) -> dict:
+    """The stock plus its 3 closest direct competitors, scored the same way, with a verdict."""
+    def go():
+        load_env()
+        info = fetch_info(sym)
+        if not info:
+            return {"ticker": sym, "error": "no data"}
+        cands = peers(sym)[:12]
+        with cf.ThreadPoolExecutor(WORKERS) as ex:
+            pinfo = dict(zip(cands, ex.map(fetch_info, cands)))
+        mcap = num(info.get("marketCap")) or 1
+        ok = [s for s in cands if pinfo.get(s) and pinfo[s].get("quoteType") == "EQUITY"
+              and (pinfo[s].get("exchange") or "") in MAJOR_EXCHANGES and num(pinfo[s].get("marketCap"))]
+        ok.sort(key=lambda s: abs(math.log10(num(pinfo[s]["marketCap"])) - math.log10(mcap)))  # closest in size
+        group = [sym] + ok[:3]
+        infos = {sym: info, **{s: pinfo[s] for s in ok[:3]}}
+        with cf.ThreadPoolExecutor(WORKERS) as ex:
+            deeps = dict(zip(group, ex.map(fetch_deep, group)))
+        perf = performance(group + ["SPY"])
+        rows = []
+        for s in group:
+            p = perf.get(s)
+            if not p:
+                continue
+            x = features(infos[s], deeps[s], p)
+            why = gate(s, infos[s], deeps[s], p, None, x, None, [])
+            r = score(s, infos[s], deeps[s], p, None, None, [])
+            rows.append({k: r[k] for k in ("ticker", "name", "industry", "market_cap", "price", "score", "tier",
+                                           "pillars", "flags", "strengths", "weaknesses", "key", "perf", "analysts")}
+                        | {"rejected": why, "self": s == sym})
+        live = [r for r in rows if not r["rejected"]]
+        best = max(live, key=lambda r: r["score"]) if live else None
+        verdict = None
+        if best and len(rows) > 1:
+            avg = {k: sum((r["pillars"].get(k) or 50) for r in rows) / len(rows) for k in WEIGHTS}
+            edge = sorted(WEIGHTS, key=lambda k: (best["pillars"].get(k) or 50) - avg[k], reverse=True)[:2]
+            lead = " and ".join(f"{k} ({best['pillars'].get(k) or 0:.0f} vs {avg[k]:.0f} avg)" for k in edge)
+            if best["ticker"] == sym:
+                verdict = f"{sym} holds up — it's the strongest of its peer group, leading on {lead}."
+            else:
+                gap = best["score"] - next((r["score"] for r in rows if r["self"]), 0)
+                verdict = (f"{best['ticker']} looks better than {sym}: {gap:+.1f} points overall, "
+                           f"leading on {lead}.")
+        return {"ticker": sym, "industry": info.get("industry"), "rows": rows,
+                "best": best["ticker"] if best else None, "verdict": verdict}
+
+    return _memo(("compare", sym), 3600, go)

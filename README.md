@@ -33,13 +33,20 @@ press-release-heavy news, social hype with no independent coverage, estimate cut
 
 News and social volume decide what gets looked at and feed the pump checks. They never add to the score.
 
+## In each stock's panel
+
+- **Chart** — line chart in the style of Apple Stocks, 1D / 1W / 1M / 3M / 1Y / 3Y / 5Y / 10Y. Hover to scrub;
+  click to pin a date and see the move from there to any point (or to now).
+- **Competitors** — the 3 closest US-listed peers by size in the same sub-industry (Finnhub peers), scored with the
+  same Pulse model, with a verdict on which is strongest and why.
+
 ## Files
 
 | File | What it does |
 |---|---|
 | `ranker.py` | discover → gate → research → score → `rankings.json` |
 | `server.py` | dashboard on :8790, re-ranks every 60 min |
-| `dashboard.html` | the UI (aero-shards hero with paper-airplane picks, dither background) |
+| `dashboard.html` | the UI: aero-shards hero with paper-airplane picks, sector filter, Apple-style price chart (1D–10Y, click to pin a date and measure from it), competitor check |
 | `scraper.py` | Reddit (rdt-cli) + X (headless Chrome) → `raw_data.json`, ~13s |
 | `save_x_session.py` | log in to X once; saves `x_session.json` (gitignored) |
 | `valid_tickers.txt` | listed US tickers used to validate cashtags |

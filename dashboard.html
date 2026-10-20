@@ -184,6 +184,41 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
   .dh,.db{padding-left:18px;padding-right:18px}.dh .tk{font-size:42px}.read p{font-size:18px}
 }
 @media (prefers-reduced-motion:reduce){.dot{animation:none}.drawer{transition:none}}
+/* sector filter */
+.secbar{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 18px}
+.sec{font-size:13px;padding:6px 11px;border:1px solid var(--line-2);color:var(--ink-2);display:inline-flex;gap:7px;align-items:baseline}
+.sec b{font-family:var(--mono);font-weight:500;color:var(--mute);font-size:12px}
+.sec.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}.sec.on b{color:var(--signal)}
+.sec:disabled{opacity:.35;cursor:default}
+.srow{cursor:pointer}.srow:hover{background:var(--panel)}.srow.on{background:var(--panel-2);box-shadow:inset 3px 0 0 var(--signal-bar)}
+.srow>span:first-child{padding-left:8px}
+/* chart */
+.chart{margin:22px 0 4px}
+.ch-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;min-height:40px}
+.ch-price{font:600 36px/1 var(--sans);letter-spacing:-.02em}
+.ch-chg{font:500 18px var(--mono)}
+.ch-when{font-size:14px;color:var(--mute)}
+.ch-box{position:relative;margin-top:14px}
+.ch-box svg{width:100%;height:250px;display:block;touch-action:pan-y;overflow:visible}
+.chart.loading svg{opacity:.35;transition:opacity .2s}
+.ch-box text{fill:var(--mute);font:11.5px var(--mono)}
+.ch-grid{stroke:var(--line);stroke-width:1}
+.ch-prev{stroke:var(--mute);stroke-width:1.2;stroke-dasharray:1.5 4;stroke-linecap:round}
+.ch-box text.ch-pl{font-size:10.5px}
+.ch-vl{stroke:var(--ink-2);stroke-width:1}
+.ch-pinl{stroke:var(--ink);stroke-width:1.2;stroke-dasharray:3 3}
+.ch-clear{font:12px var(--mono);color:var(--mute);border:1px solid var(--line-2);padding:3px 8px;margin-left:auto}
+.ch-clear:hover{color:var(--ink);border-color:var(--ink)}
+.ch-box #chHit{cursor:crosshair}
+.db .mini td:first-child{white-space:normal}
+.ch-ranges{display:flex;gap:2px;margin-top:12px;background:var(--panel-2);padding:3px;border-radius:10px;width:max-content;max-width:100%;overflow-x:auto}
+.rg{font:600 13.5px var(--sans);padding:7px 12px;border-radius:8px;color:var(--ink-2);white-space:nowrap}
+.rg.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+/* competitors */
+.verdict{border-left:3px solid var(--signal-bar);padding:12px 16px;background:var(--panel);font-size:16px;line-height:1.5;margin-bottom:14px}
+.comps tr.self td{background:color-mix(in srgb,var(--signal) 12%,transparent)}
+.comps tr[data-c]{cursor:pointer}.comps tr[data-c]:hover td{background:var(--panel)}
+.comps .tag{font-size:10px;padding:1px 5px;margin-left:4px}
 </style>
 </head>
 <body>
@@ -216,19 +251,15 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
   </section>
 
   <section>
-    <div class="sh"><h2>◆ Diamonds in the rough</h2><span class="aside" id="gemN">under $3B · ≤6 analysts · fast growth · clean books</span></div>
-    <div class="cards" id="gems"><div class="empty">Loading…</div></div>
-  </section>
-
-  <section>
     <div class="sh"><h2>Best setups</h2><span class="aside" id="buyN">—</span></div>
+    <div class="secbar" id="secBar"></div>
     <div class="cards" id="cards"><div class="empty">Loading…</div></div>
   </section>
 
   <section>
     <div class="split">
       <div>
-        <div class="sh"><h2>Sector heat</h2><span class="aside">names · buys · avg score</span></div>
+        <div class="sh"><h2>Sector heat</h2><span class="aside">click to filter · names · buys · avg</span></div>
         <div id="sectors"></div>
       </div>
       <div>
@@ -485,18 +516,15 @@ function card(r){
     <div class="why">${r.strengths.slice(0,3).map(s=>`<span>${esc(s.label)} ${esc(s.value)}</span>`).join("")}</div>
     ${tags?`<div class="tags">${tags}</div>`:""}</div>`}
 function renderCards(){
-  const R=D.results,gems=R.filter(r=>r.diamond).slice(0,9);
-  $("#gems").innerHTML=gems.length?gems.map(card).join(""):'<div class="empty">No diamonds clear the bar this run — that\'s the point of the bar.</div>';
-  $("#gemN").textContent=`${D.diamonds||0} found · under $3B · ≤6 analysts · fast growth · clean books`;
-  let top=R.filter(r=>r.tier==="BUY"&&!r.diamond);
-  if(top.length<4)top=top.concat(R.filter(r=>r.tier==="WATCH").slice(0,8-top.length));
-  top=top.slice(0,12);
-  $("#buyN").textContent=`${(D.counts||{}).BUY||0} buy · ${(D.counts||{}).WATCH||0} watch · ${(D.counts||{}).AVOID||0} avoid`;
-  $("#cards").innerHTML=top.length?top.map(card).join(""):'<div class="empty">Nothing clears the bar this run.</div>';
+  const R=D.results.filter(inSector),buys=R.filter(r=>r.tier==="BUY"),watch=R.filter(r=>r.tier==="WATCH");
+  const top=buys.concat(buys.length<4?watch.slice(0,8-buys.length):[]).slice(0,12);
+  const tally=`${buys.length} buy · ${watch.length} watch · ${R.filter(r=>r.tier==="AVOID").length} avoid`;
+  $("#buyN").textContent=SECTOR?`${sectLabel(SECTOR)} · ${tally}`:tally;
+  $("#cards").innerHTML=top.length?top.map(card).join(""):`<div class="empty">Nothing in ${esc(sectLabel(SECTOR||""))} clears the bar this run.</div>`;
 }
 function renderSectors(){
   const S=(D.summary||{}).sector_heat||[];const mx=Math.max(1,...S.map(s=>s.count));
-  $("#sectors").innerHTML=S.length?S.slice(0,10).map(s=>`<div class="srow"><span>${esc(s.sector)}</span><span class="mono r">${s.count}</span><span class="mono r ${s.buys?"":"dim"}">${s.buys}</span>
+  $("#sectors").innerHTML=S.length?S.slice(0,11).map(s=>`<div class="srow ${SECTOR===s.sector?"on":""}" data-sector="${esc(s.sector)}"><span>${esc(s.sector)}</span><span class="mono r">${s.count}</span><span class="mono r ${s.buys?"":"dim"}">${s.buys}</span>
     <div class="track"><div class="fill ${s.avg>=60?"hi":""}" style="width:${s.avg}%"></div></div><span class="mono r">${s.avg.toFixed(0)}</span></div>`).join(""):'<div class="empty">—</div>';
 }
 function renderRejects(){
@@ -530,12 +558,135 @@ const COLS=[
 function renderTable(){
   $("#thead").innerHTML=COLS.map(c=>`<th class="${c.c||""} ${SORT.k===c.k?"on":""}" data-k="${c.k}">${c.l}${SORT.k===c.k?(SORT.dir>0?" ↑":" ↓"):""}</th>`).join("");
   const q=$("#q").value.trim().toLowerCase(),col=COLS.find(c=>c.k===SORT.k);
-  const rs=D.results.filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:FILTER==="GEM"?r.diamond:r.tier===FILTER))
+  const rs=D.results.filter(inSector).filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:FILTER==="GEM"?r.diamond:r.tier===FILTER))
     .filter(r=>!q||[r.ticker,r.name,r.sector,r.industry].join(" ").toLowerCase().includes(q))
     .sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*SORT.dir});
-  $("#tblN").textContent=`${rs.length} of ${D.results.length}`;
+  $("#tblN").textContent=`${rs.length} of ${D.results.length}${SECTOR?" · "+sectLabel(SECTOR):""}`;
   $("#tbody").innerHTML=rs.length?rs.map(r=>`<tr data-t="${esc(r.ticker)}">${COLS.map(c=>`<td class="${c.c||""}">${c.f(r)}</td>`).join("")}</tr>`).join("")
     :`<tr><td colspan="${COLS.length}"><div class="empty">No matches.</div></td></tr>`;
+}
+
+/* ---------- sectors ---------- */
+const SECT=[["Technology","Tech"],["Financial Services","Finance"],["Healthcare","Health"],["Energy","Energy"],["Industrials","Industrials"],
+  ["Consumer Cyclical","Consumer"],["Consumer Defensive","Staples"],["Basic Materials","Materials"],["Communication Services","Comms"],
+  ["Real Estate","Real estate"],["Utilities","Utilities"]];
+let SECTOR=null;
+const inSector=r=>!SECTOR||r.sector===SECTOR;
+const sectLabel=s=>(SECT.find(x=>x[0]===s)||[0,s])[1];
+function renderSectorBar(){
+  const n=s=>D.results.filter(r=>r.sector===s).length;
+  $("#secBar").innerHTML=`<button class="sec ${SECTOR?"":"on"}" data-sector="">All <b>${D.results.length}</b></button>`+
+    SECT.map(([s,l])=>{const k=n(s);return`<button class="sec ${SECTOR===s?"on":""}" data-sector="${esc(s)}" ${k?"":"disabled"}>${l} <b>${k}</b></button>`}).join("");
+}
+function setSector(s){SECTOR=s||null;renderSectorBar();renderCards();renderSectors();renderTable()}
+
+/* ---------- chart (Apple Stocks style: line, no candles) ---------- */
+const RANGES=["1D","1W","1M","3M","1Y","3Y","5Y","10Y"];
+const RANGE_WORD={"1D":"Today","1W":"Past week","1M":"Past month","3M":"Past 3 months","1Y":"Past year","3Y":"Past 3 years","5Y":"Past 5 years","10Y":"Past 10 years"};
+let RANGE=(()=>{try{return localStorage.getItem("pulse-range")||"1Y"}catch{return"1Y"}})();
+const chartCache={};
+const money=v=>v==null?"—":"$"+(v>=1000?v.toLocaleString(undefined,{maximumFractionDigits:2}):v<1?v.toFixed(4):v.toFixed(2));
+function chartHTML(t){return`<div class="chart" id="chart" data-t="${esc(t)}">
+  <div class="ch-head"><span class="ch-price" id="chPrice">—</span><span class="ch-chg" id="chChg"></span><span class="ch-when" id="chWhen"></span><button class="ch-clear" id="chClear" hidden>clear pin ✕</button></div>
+  <div class="ch-box"><svg id="chSvg" role="img" aria-label="Price chart"></svg></div>
+  <div class="ch-ranges">${RANGES.map(r=>`<button class="rg ${r===RANGE?"on":""}" data-r="${r}">${r}</button>`).join("")}</div></div>`}
+async function loadChart(t,rg){
+  const box=$("#chart");if(!box||box.dataset.t!==t)return;if(RANGE!==rg||box.dataset.drawn!==t+rg)PIN=null;box.dataset.drawn=t+rg;RANGE=rg;try{localStorage.setItem("pulse-range",rg)}catch{}
+  box.querySelectorAll(".rg").forEach(b=>b.classList.toggle("on",b.dataset.r===rg));
+  const key=t+"|"+rg;let c=chartCache[key];
+  if(!c){box.classList.add("loading");try{c=await (await fetch(`/api/chart?t=${encodeURIComponent(t)}&r=${rg}`)).json();if(c.points)chartCache[key]=c}catch{c={points:[]}}
+    box.classList.remove("loading")}
+  if($("#chart")?.dataset.t!==t||RANGE!==rg)return;
+  drawChart(c);
+}
+function fmtTick(ts,rg){const d=new Date(ts*1000);
+  if(rg==="1D")return d.toLocaleTimeString([], {hour:"numeric"}).replace(":00","");
+  if(rg==="1W")return d.toLocaleDateString([], {weekday:"short"});
+  if(rg==="1M"||rg==="3M")return d.toLocaleDateString([], {month:"short",day:"numeric"});
+  if(rg==="1Y")return d.toLocaleDateString([], {month:"short"});
+  return String(d.getFullYear())}
+function fmtWhen(ts,rg){const d=new Date(ts*1000);
+  return ["1D","1W","1M"].includes(rg)?d.toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})
+    :d.toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"})}
+let PIN=null;  // index pinned on the current chart: header then measures pin → hover (or → latest)
+function setHead(c,i){
+  const P=c.points||[];$("#chClear").hidden=PIN==null;
+  if(!P.length){$("#chPrice").textContent="—";$("#chChg").textContent="";$("#chWhen").textContent=RANGE_WORD[c.range]||"";return}
+  const p=i==null?P[P.length-1]:P[i];
+  const from=PIN!=null?P[PIN]:null,base=from?from[1]:(c.base??P[0][1]),ch=p[1]-base,pc=base?ch/base:0;
+  $("#chPrice").textContent=money(p[1]);
+  const el=$("#chChg");el.className="ch-chg "+(ch>=0?"up":"down");el.textContent=`${ch>=0?"+":"−"}${Math.abs(ch).toFixed(2)} (${ch>=0?"+":"−"}${Math.abs(pc*100).toFixed(2)}%)`;
+  $("#chWhen").textContent=from?`${fmtWhen(from[0],c.range)} → ${i==null?"now":fmtWhen(p[0],c.range)}`
+    :i==null?`${RANGE_WORD[c.range]} · click the chart to pin a date`:fmtWhen(p[0],c.range);
+  if(from)$("#chWhen").textContent+=" · click again to clear";
+}
+function drawChart(c){
+  const svg=$("#chSvg");if(!svg)return;const W=svg.clientWidth||640,H=svg.clientHeight||250,PR=58,PB=26,PT=12,iw=W-PR,ih=H-PB-PT;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  const P=c.points||[];setHead(c,null);
+  if(P.length<2){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">No price data for this range</text>`;return}
+  const up=(c.change??(P[P.length-1][1]-P[0][1]))>=0,col=up?"var(--up)":"var(--down)";
+  let lo=Math.min(...P.map(p=>p[1])),hi=Math.max(...P.map(p=>p[1]));
+  if(c.prev_close!=null){lo=Math.min(lo,c.prev_close);hi=Math.max(hi,c.prev_close)}
+  const pad=(hi-lo)*.08||hi*.01;lo-=pad;hi+=pad;
+  const timeX=c.range==="1D"&&c.session;
+  const xs=P.map((p,i)=>timeX?((p[0]-c.session[0])/(c.session[1]-c.session[0]))*iw:i/(P.length-1)*iw);
+  const Y=v=>PT+(1-(v-lo)/(hi-lo))*ih;
+  const line=P.map((p,i)=>`${i?"L":"M"}${xs[i].toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+  const area=`${line}L${xs[xs.length-1].toFixed(1)},${PT+ih}L${xs[0].toFixed(1)},${PT+ih}Z`;
+  let grid="";for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v).toFixed(1);
+    grid+=`<line class="ch-grid" x1="0" x2="${iw}" y1="${y}" y2="${y}"/><text x="${iw+8}" y="${y}" dy="4">${money(v).replace("$","")}</text>`}
+  let ticks="";const n=Math.min(5,P.length);
+  if(timeX){const s0=c.session[0],s1=c.session[1];let ts=Math.ceil(s0/3600)*3600;   // round local hours
+    for(;ts<s1;ts+=3600){const x=(ts-s0)/(s1-s0)*iw;if(x<18||x>iw-18)continue;
+      ticks+=`<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="middle">${fmtTick(ts,c.range)}</text>`}}
+  else for(let k=0;k<n;k++){const i=Math.round((P.length-1)*(k+.5)/n);
+    ticks+=`<text x="${xs[i].toFixed(1)}" y="${H-6}" text-anchor="middle">${fmtTick(P[i][0],c.range)}</text>`}
+  const prev=c.prev_close!=null?`<line class="ch-prev" x1="0" x2="${iw}" y1="${Y(c.prev_close).toFixed(1)}" y2="${Y(c.prev_close).toFixed(1)}"/><text x="${iw+8}" y="${Y(c.prev_close).toFixed(1)}" dy="-6" class="ch-pl">Prev ${money(c.prev_close).replace("$","")}</text>`:"";
+  svg.innerHTML=`<defs><linearGradient id="chFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    ${grid}${prev}<path d="${area}" fill="url(#chFill)"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${ticks}<rect id="chBand" y="${PT}" height="${ih}" fill="${col}" opacity=".1" style="display:none"/>
+    <g id="chPin" style="display:none"><line class="ch-pinl" y1="${PT}" y2="${PT+ih}"/><circle r="5.5" fill="var(--bg)" stroke="${col}" stroke-width="2.2"/></g>
+    <g id="chHover" style="display:none"><line class="ch-vl" y1="${PT}" y2="${PT+ih}"/><circle r="5" fill="${col}" stroke="var(--bg)" stroke-width="2"/></g>
+    <rect x="0" y="0" width="${iw}" height="${H}" fill="transparent" id="chHit"/>`;
+  const hov=svg.querySelector("#chHover"),vl=hov.querySelector("line"),dot=hov.querySelector("circle");
+  const pin=svg.querySelector("#chPin"),pl=pin.querySelector("line"),pd=pin.querySelector("circle"),band=svg.querySelector("#chBand");
+  if(PIN!=null&&PIN>=P.length)PIN=null;
+  const nearest=e=>{const r=svg.getBoundingClientRect(),mx=(e.clientX-r.left)*(W/r.width);
+    let i=0,best=1e9;for(let k=0;k<xs.length;k++){const d=Math.abs(xs[k]-mx);if(d<best){best=d;i=k}}return i};
+  const paint=i=>{  // pin marker + shaded span from the pin to i (or to the latest point)
+    if(PIN==null){pin.style.display="none";band.style.display="none";return}
+    pin.style.display="";pl.setAttribute("x1",xs[PIN]);pl.setAttribute("x2",xs[PIN]);pd.setAttribute("cx",xs[PIN]);pd.setAttribute("cy",Y(P[PIN][1]));
+    const j=i==null?P.length-1:i,a=Math.min(xs[PIN],xs[j]),b=Math.max(xs[PIN],xs[j]);
+    band.style.display="";band.setAttribute("x",a);band.setAttribute("width",Math.max(1,b-a))};
+  const move=e=>{const i=nearest(e);
+    hov.style.display="";vl.setAttribute("x1",xs[i]);vl.setAttribute("x2",xs[i]);dot.setAttribute("cx",xs[i]);dot.setAttribute("cy",Y(P[i][1]));paint(i);setHead(c,i)};
+  const hit=svg.querySelector("#chHit");hit.addEventListener("pointermove",move);
+  hit.addEventListener("click",e=>{PIN=PIN==null?nearest(e):null;move(e)});  // click 1 pins, click 2 clears
+  hit.addEventListener("pointerleave",()=>{hov.style.display="none";paint(null);setHead(c,null)});
+  $("#chClear").onclick=()=>{PIN=null;paint(null);setHead(c,null)};
+  paint(null);setHead(c,null);
+}
+
+/* ---------- competitors (Seeking Alpha-style peer check) ---------- */
+async function loadComps(t){
+  try{const c=await (await fetch(`/api/compare?t=${encodeURIComponent(t)}`)).json();if($("#comps")?.dataset.t!==t)return;renderComps(c)}
+  catch{const b=$("#comps");if(b)b.innerHTML='<div class="dim">Couldn\'t load competitors right now.</div>'}
+}
+function renderComps(c){
+  const box=$("#comps"),rows=(c.rows||[]).slice().sort((a,b)=>(a.rejected.length-b.rejected.length)||b.score-a.score);
+  if(rows.length<2){box.innerHTML='<div class="dim">No close, US-listed competitors found.</div>';return}
+  const pp=p=>`<span class="pp">${PIL.map(([k])=>{const s=p[k];return`<i style="background:${s>=70?"var(--signal)":"transparent"};color:${s>=70?"var(--on-signal)":s<35?"var(--down)":"var(--ink-2)"}">${s==null?"–":Math.round(s)}</i>`}).join("")}</span>`;
+  box.innerHTML=`${c.verdict?`<div class="verdict">${esc(c.verdict)}</div>`:""}
+  <div class="tw"><table class="mini comps"><thead><tr><th>Ticker</th><th class="r">Mkt cap</th><th class="r">Score</th><th>Call</th><th>G Q E V M Ea</th><th class="r">Rev gr</th><th class="r">GM</th><th class="r">Op mgn</th><th class="r">1Y</th></tr></thead><tbody>${
+    rows.map(r=>{const inList=D.results.some(x=>x.ticker===r.ticker)&&!r.self;
+      return`<tr class="${r.self?"self":""} ${r.ticker===c.best?"best":""}" ${inList?`data-c="${esc(r.ticker)}"`:""} title="${esc(r.name||"")}">
+      <td><b>${esc(r.ticker)}</b>${r.self?' <span class="tag">this</span>':""}${r.ticker===c.best?' <span class="tag gem">best</span>':""}</td>
+      <td class="r">${cap(r.market_cap)}</td><td class="r"><b>${r.score.toFixed(1)}</b></td>
+      <td>${r.rejected.length?`<span class="down" title="${esc(r.rejected.join(" · "))}">filtered</span>`:`<span class="tier ${r.tier}">${r.tier}</span>`}</td>
+      <td>${pp(r.pillars)}</td><td class="r">${pct(r.key.rev_growth)}</td><td class="r">${pct0(r.key.gross_margin)}</td><td class="r">${pct0(r.key.op_margin)}</td><td class="r">${pct(r.perf.r1y)}</td></tr>`}).join("")}
+  </tbody></table></div>
+  <div class="lbl" style="margin-top:8px">closest 3 by size in the same sub-industry · same Pulse scoring · ${esc(c.industry||"")}</div>`;
 }
 
 /* ---------- drawer ---------- */
@@ -563,6 +714,7 @@ function openT(t){
     <div class="sub">${esc(r.name)} · ${esc(r.industry||"")} · ${cap(r.market_cap)} · $${fx(r.price,2)}${r.website?` · <a href="${esc(r.website)}" target="_blank" rel="noopener noreferrer">site ↗</a>`:""}</div>
   </div>
   <div class="db">
+    ${chartHTML(r.ticker)}
     ${r.about?`<h3>What they do</h3><p class="about">${esc(r.about)}${r.about.length>=420?"…":""}</p>`:""}
     <h3>Pillars</h3>${pil}
     ${tags?`<div class="tags" style="margin-top:12px">${tags}</div>`:""}
@@ -586,6 +738,7 @@ function openT(t){
       <div>Social mentions</div><div>${so.mentions||0}${so.mentions?` (${so.reddit} Reddit · ${so.x} X)`:""}</div>
       <div>Social tone</div><div>${so.tone==null?"—":toneWord(so.tone)+" "+so.tone.toFixed(2)}</div>
       <div>Next earnings</div><div>${r.next_earnings?esc(r.next_earnings.slice(0,10)):"—"}</div></div></div></div>
+    <h3>Competitors</h3><div id="comps" data-t="${esc(r.ticker)}"><div class="dim">Pulling the 3 closest competitors and scoring them…</div></div>
     ${sec?`<h3>SEC filings</h3><div class="kv"><div>Offerings / shelves (120d)</div><div>${sec.offerings_120d.length?esc(sec.offerings_120d.join(", ")):"none"}</div><div>Insider filings (90d)</div><div>${sec.form4_90d}</div><div>Late filings · delisting notice</div><div>${sec.late_filings_180d} · ${sec.delisting_notice_180d?"yes":"no"}</div></div>`:""}
     <h3>All metrics</h3><table class="mini"><tbody>${byP}</tbody></table>
     <h3>Earnings surprises</h3>${ehT}
@@ -593,11 +746,13 @@ function openT(t){
     ${posts?`<h3>Reddit / X</h3><div class="news">${posts}</div>`:""}
   </div>`;
   $("#drawer").classList.add("open");$("#scrim").classList.add("open");$("#drawer").scrollTop=0;$("#close").onclick=closeT;
+  $("#drawer").querySelectorAll(".rg").forEach(b=>b.onclick=()=>loadChart(r.ticker,b.dataset.r));
+  requestAnimationFrame(()=>loadChart(r.ticker,RANGE));loadComps(r.ticker);
 }
 function closeT(){$("#drawer").classList.remove("open");$("#scrim").classList.remove("open")}
 
 /* ---------- data ---------- */
-function renderAll(){renderRead();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results,(D.summary||{}).news_tone,(D.summary||{}).researched)}
+function renderAll(){renderRead();renderSectorBar();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results,(D.summary||{}).news_tone,(D.summary||{}).researched)}
 function renderHero(){const c=D.counts||{},S=D.summary||{};
   $("#heroN").innerHTML=`<b>${c.BUY||0}</b> to buy<span class="sep">/</span>${c.WATCH||0} watch<span class="sep">/</span>${c.AVOID||0} avoid`;
   $("#heroLbl").textContent=`${(S.hunt_total||0).toLocaleString()} screened · ${S.researched||0} researched · ${S.rejected||0} filtered out`}
@@ -618,7 +773,11 @@ $("#run").onclick=async()=>{$("#run").disabled=true;await fetch("/api/run",{meth
 document.querySelectorAll(".pill").forEach(p=>p.onclick=()=>{document.querySelectorAll(".pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");FILTER=p.dataset.f;renderTable()});
 $("#q").oninput=renderTable;
 $("#thead").onclick=e=>{const th=e.target.closest("th");if(!th)return;const k=th.dataset.k;SORT=SORT.k===k?{k,dir:-SORT.dir}:{k,dir:["rank","ticker","tier","er","ind"].includes(k)?1:-1};renderTable()};
-document.addEventListener("click",e=>{const el=e.target.closest("[data-t]");if(el&&!e.target.closest("#drawer"))openT(el.dataset.t)});
+document.addEventListener("click",e=>{
+  const sc=e.target.closest("[data-sector]");if(sc&&!sc.disabled){const s=sc.dataset.sector;setSector(sc.classList.contains("srow")&&SECTOR===s?"":s);return}
+  const cp=e.target.closest("#drawer [data-c]");if(cp){openT(cp.dataset.c);return}
+  const el=e.target.closest("[data-t]");if(el&&!e.target.closest("#drawer"))openT(el.dataset.t)});
+addEventListener("resize",()=>{const c=$("#chart");if(c&&$("#drawer").classList.contains("open")){const k=c.dataset.t+"|"+RANGE;if(chartCache[k])drawChart(chartCache[k])}});
 $("#scrim").onclick=closeT;document.addEventListener("keydown",e=>{if(e.key==="Escape")closeT()});
 load();poll();setInterval(poll,15000);
 </script>
