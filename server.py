@@ -26,6 +26,24 @@ DASH = ranker.ROOT / "dashboard.html"
 state = {"running": False, "last_run": None, "last_error": None, "next_run": None, "took_s": None}
 lock = threading.Lock()
 wake = threading.Event()
+warm_lock = threading.Lock()
+
+
+def prewarm() -> None:
+    """Background: warm every ranked stock's competitors so comp clicks open instantly."""
+    if not warm_lock.acquire(blocking=False):
+        return
+    try:
+        syms = [r["ticker"] for r in json.loads(ranker.OUT.read_text()).get("results", [])]
+        ranker.prewarm(syms)
+    except Exception:
+        traceback.print_exc()
+    finally:
+        warm_lock.release()
+
+
+def prewarm_bg() -> None:
+    threading.Thread(target=prewarm, daemon=True).start()
 
 
 def iso(ts: float | None) -> str | None:
@@ -39,6 +57,7 @@ def run_once() -> None:
     try:
         out = ranker.run()
         state.update(last_run=out["generated_at"], took_s=out["took_s"], last_error=None)
+        prewarm_bg()
     except Exception as e:
         traceback.print_exc()
         state["last_error"] = f"{type(e).__name__}: {e}"
@@ -52,6 +71,7 @@ def loop() -> None:
     if ranker.OUT.exists() and time.time() - ranker.OUT.stat().st_mtime < INTERVAL_MIN * 60:
         state["last_run"] = iso(ranker.OUT.stat().st_mtime)
         nxt = ranker.OUT.stat().st_mtime + INTERVAL_MIN * 60
+        prewarm_bg()  # memory is empty after a restart
     else:
         nxt = time.time()
     while True:
@@ -78,13 +98,14 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/rankings":
             body = ranker.OUT.read_bytes() if ranker.OUT.exists() else b'{"results":[]}'
             self._send(200, body)
-        elif path in ("/api/chart", "/api/compare"):
+        elif path in ("/api/chart", "/api/compare", "/api/stock"):
             q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
             sym, rng = (q.get("t") or "").upper(), q.get("r", "1M")
             if not re.fullmatch(r"[A-Z0-9.\-]{1,10}", sym) or (path == "/api/chart" and rng not in ranker.CHART_RANGES):
                 return self._send(400, b'{"error":"bad ticker or range"}')
             try:
-                data = ranker.chart(sym, rng) if path == "/api/chart" else ranker.compare(sym)
+                data = (ranker.chart(sym, rng) if path == "/api/chart" else
+                        ranker.compare(sym) if path == "/api/compare" else ranker.stock(sym))
                 self._send(200, json.dumps(ranker.clean(data)).encode())
             except Exception as e:
                 self._send(502, json.dumps({"error": f"{type(e).__name__}: {e}"}).encode())

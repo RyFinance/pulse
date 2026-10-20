@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -51,6 +52,8 @@ HEAT_DEEP = int(env("PULSE_HEAT_DEEP", 50))        # hot names that get full res
 NEWS_HOURS = int(env("PULSE_NEWS_HOURS", 48))
 SOCIAL_MAX_AGE_MIN = float(env("PULSE_SOCIAL_MAX_AGE_MIN", 50))
 FUND_TTL_H = float(env("PULSE_FUND_TTL_H", 12))
+PEER_TTL_S = 3 * 3600  # comps are re-warmed after every run; this only bounds staleness if a run fails
+PREWARM_WORKERS = 2
 WORKERS = int(env("PULSE_WORKERS", 6))
 KEEP_HISTORY = 300
 UA = {"User-Agent": "Mozilla/5.0"}
@@ -487,9 +490,13 @@ def sec_filings(sym: str, cik: int | None) -> dict | None:
 
 
 # ---------------------------------------------------------------- prices
+_dl_lock = threading.Lock()  # yf.download keeps shared module state; concurrent calls blank each other
+
+
 def performance(syms: list[str]) -> dict[str, dict]:
     try:
-        px = yf.download(syms, period="2y", auto_adjust=True, actions=True, progress=False, threads=8)
+        with _dl_lock:
+            px = yf.download(syms, period="2y", auto_adjust=True, actions=True, progress=False, threads=8)
     except Exception as e:
         print(f"[perform] download failed: {e}")
         return {}
@@ -995,12 +1002,13 @@ if __name__ == "__main__":
 _mem: dict = {}
 
 
-def _memo(key, ttl_s, fn):
+def _memo(key, ttl_s, fn, force=False):
     hit = _mem.get(key)
-    if hit and time.time() - hit[0] < ttl_s:
+    if hit and not force and time.time() - hit[0] < ttl_s:
         return hit[1]
     val = fn()
-    _mem[key] = (time.time(), val)
+    if not (isinstance(val, dict) and val.get("error")):  # don't pin a transient failure for the whole TTL
+        _mem[key] = (time.time(), val)
     return val
 
 
@@ -1063,7 +1071,36 @@ def peers(sym: str) -> list[str]:
     return cached(f"{sym}.peers.json", 24 * 7, go) or []
 
 
-def compare(sym: str) -> dict:
+def stock(sym: str, force: bool = False) -> dict:
+    """Full detail record for one ticker that isn't in the latest ranking (e.g. a competitor), scored the same way."""
+    def go():
+        load_env()
+        info = fetch_info(sym)
+        if not info:
+            return {"ticker": sym, "error": "no data"}
+        deep = fetch_deep(sym)
+        p = None
+        for wait in (0, 2, 5):  # yf.download shares state across threads; a concurrent re-rank can blank it
+            time.sleep(wait)
+            if p := performance([sym, "SPY"]).get(sym):
+                break
+        if not p:
+            return {"ticker": sym, "error": "no price history"}
+        heads = defaultdict(list)
+        ynews = yahoo_ticker_news([sym], heads)
+        finnhub_news([sym], heads, Counter(ynews))
+        ciks = sec_cik_map()
+        sec = sec_filings(sym, ciks.get(sym)) if ciks else None
+        x = features(info, deep, p)
+        r = score(sym, info, deep, p, sec, None, heads.get(sym, []))
+        r["rejected"] = gate(sym, info, deep, p, sec, x, None, heads.get(sym, []))
+        r["discovery"], r["headlines"], r["rank"], r["offlist"] = {}, heads.get(sym, []), None, True
+        return r
+
+    return _memo(("stock", sym), PEER_TTL_S, go, force)
+
+
+def compare(sym: str, force: bool = False) -> dict:
     """The stock plus its 3 closest direct competitors, scored the same way, with a verdict."""
     def go():
         load_env()
@@ -1109,4 +1146,24 @@ def compare(sym: str) -> dict:
         return {"ticker": sym, "industry": info.get("industry"), "rows": rows,
                 "best": best["ticker"] if best else None, "verdict": verdict}
 
-    return _memo(("compare", sym), 3600, go)
+    return _memo(("compare", sym), PEER_TTL_S, go, force)
+
+
+def prewarm(syms: list[str], log=print) -> None:
+    """After a run: score every ranked stock's competitors and research the off-list ones, so the
+    Competitors table and every comp click open from memory instead of a cold pull."""
+    t0, ranked, extra = time.time(), set(syms), set()
+
+    def one(s):
+        try:
+            c = compare(s, force=True)
+            return [r["ticker"] for r in c.get("rows", []) if not r["self"] and r["ticker"] not in ranked]
+        except Exception:
+            return []
+
+    with cf.ThreadPoolExecutor(PREWARM_WORKERS) as ex:
+        for comps in ex.map(one, syms):
+            extra.update(comps)
+    with cf.ThreadPoolExecutor(PREWARM_WORKERS) as ex:
+        ok = sum(not r.get("error") for r in ex.map(lambda s: stock(s, force=True), sorted(extra)))
+    log(f"[prewarm] comps for {len(syms)} ranked + {ok}/{len(extra)} off-list in {time.time() - t0:.0f}s", flush=True)

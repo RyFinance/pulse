@@ -720,22 +720,34 @@ function renderComps(c){
   const pp=p=>`<span class="pp">${PIL.map(([k])=>{const s=p[k];return`<i style="background:${s>=70?"var(--signal)":"transparent"};color:${s>=70?"var(--on-signal)":s<35?"var(--down)":"var(--ink-2)"}">${s==null?"–":Math.round(s)}</i>`}).join("")}</span>`;
   box.innerHTML=`${c.verdict?`<div class="verdict">${esc(c.verdict)}</div>`:""}
   <div class="tw"><table class="mini comps"><thead><tr><th>Ticker</th><th class="r">Mkt cap</th><th class="r">Score</th><th>Call</th><th>G Q E V M Ea</th><th class="r">Rev gr</th><th class="r">GM</th><th class="r">Op mgn</th><th class="r">1Y</th></tr></thead><tbody>${
-    rows.map(r=>{const inList=D.results.some(x=>x.ticker===r.ticker)&&!r.self;
-      return`<tr class="${r.self?"self":""} ${r.ticker===c.best?"best":""}" ${inList?`data-c="${esc(r.ticker)}"`:""} title="${esc(r.name||"")}">
+    rows.map(r=>`<tr class="${r.self?"self":""} ${r.ticker===c.best?"best":""}" ${r.self?"":`data-c="${esc(r.ticker)}"`} title="${esc(r.name||"")}${r.self?"":" — open"}">
       <td><b>${esc(r.ticker)}</b>${r.self?' <span class="tag">this</span>':""}${r.ticker===c.best?' <span class="tag gem">best</span>':""}</td>
       <td class="r">${cap(r.market_cap)}</td><td class="r"><b>${r.score.toFixed(1)}</b></td>
       <td>${r.rejected.length?`<span class="down" title="${esc(r.rejected.join(" · "))}">filtered</span>`:`<span class="tier ${r.tier}">${r.tier}</span>`}</td>
-      <td>${pp(r.pillars)}</td><td class="r">${pct(r.key.rev_growth)}</td><td class="r">${pct0(r.key.gross_margin)}</td><td class="r">${pct0(r.key.op_margin)}</td><td class="r">${pct(r.perf.r1y)}</td></tr>`}).join("")}
+      <td>${pp(r.pillars)}</td><td class="r">${pct(r.key.rev_growth)}</td><td class="r">${pct0(r.key.gross_margin)}</td><td class="r">${pct0(r.key.op_margin)}</td><td class="r">${pct(r.perf.r1y)}</td></tr>`).join("")}
   </tbody></table></div>
   <div class="lbl" style="margin-top:8px">closest 3 by size in the same sub-industry · same Pulse scoring · ${esc(c.industry||"")}</div>`;
 }
 
 /* ---------- drawer ---------- */
-function openT(t){
-  const r=D.results.find(x=>x.ticker===t);if(!r)return;
+/* tickers outside the latest ranking (competitors) are researched on demand */
+const extra={};
+async function openT(t){
+  const r=D.results.find(x=>x.ticker===t);if(r)return showT(r);
+  OPENING=t;
+  if(!extra[t]){
+    $("#drawer").innerHTML=`<div class="dh"><button class="x" id="close" aria-label="Close">✕</button><div class="lbl">not in today's ranking</div><div class="tk" style="margin-top:8px">${esc(t)}</div><div class="sub">Researching ${esc(t)} and scoring it the Pulse way…</div></div>`;
+    $("#drawer").classList.add("open");$("#scrim").classList.add("open");$("#drawer").scrollTop=0;$("#close").onclick=closeT;
+    try{const x=await (await fetch(`/api/stock?t=${encodeURIComponent(t)}`)).json();if(!x.error)extra[t]=x;else throw new Error(x.error)}
+    catch(e){if(OPENING===t)$("#drawer .sub").textContent=`Couldn't load ${t} right now${e.message?` (${e.message})`:""}.`;return}
+  }
+  if(OPENING===t)showT(extra[t]);
+}
+let OPENING=null;
+function showT(r){OPENING=r.ticker;
   const pil=PIL.map(([k,l])=>{const s=r.pillars[k];const name={growth:"Growth",quality:"Quality",estimates:"Estimates",valuation:"Valuation",momentum:"Momentum",early:"Early"}[k];
     return`<div class="pil"><span class="lbl">${name}</span><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div><span class="mono r">${s==null?"—":Math.round(s)}</span></div>`}).join("");
-  const tags=[...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
+  const tags=[...(r.rejected||[]).map(f=>`<span class="tag flag">filtered: ${esc(f)}</span>`),...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
   const kv=arr=>arr.length?arr.map(s=>`<div>${esc(s.label)}</div><div>${esc(s.value)}</div>`).join(""):'<div class="dim">—</div><div></div>';
   const byP=PIL.map(([k])=>{const ms=r.metrics.filter(m=>m.pillar===k);return ms.length?`<tr><th colspan="3">${k}</th></tr>`+ms.map(m=>`<tr><td style="font-family:var(--sans)">${esc(m.label)}</td><td class="r">${esc(m.value)}</td><td class="r" style="color:${m.score>=70?"var(--up)":m.score<35?"var(--down)":"var(--ink-2)"}">${m.score}</td></tr>`).join(""):""}).join("");
   const Q=r.quarters||{},rv=Q["Total Revenue"]||[],gp=Q["Gross Profit"]||[],oi=Q["Operating Income"]||[],dts=Q._dates||[];
@@ -750,7 +762,7 @@ function openT(t){
   const k=r.key;
   $("#drawer").innerHTML=`
   <div class="dh"><button class="x" id="close" aria-label="Close">✕</button>
-    <div class="lbl">#${r.rank} · ${esc(r.sector||"")} · found via ${esc(src||"—")}</div>
+    <div class="lbl">${r.offlist?"not in today's ranking · competitor lookup":`#${r.rank} · found via ${esc(src||"—")}`} · ${esc(r.sector||"")}</div>
     <div class="tk" style="margin-top:8px">${esc(r.ticker)} <span class="score ${r.tier}">${r.tier} ${r.score.toFixed(0)}</span></div>
     <div class="sub">${esc(r.name)} · ${esc(r.industry||"")} · ${cap(r.market_cap)} · $${fx(r.price,2)}${r.website?` · <a href="${esc(r.website)}" target="_blank" rel="noopener noreferrer">site ↗</a>`:""}</div>
   </div>
