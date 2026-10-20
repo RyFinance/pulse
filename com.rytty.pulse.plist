@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.rytty.pulse</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/rytty/miniforge3/bin/python</string>
+    <string>/Users/rytty/CCP/pulse/server.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/rytty/CCP/pulse</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PULSE_INTERVAL_MIN</key><string>60</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <!-- scraper.py shells out to rdt (~/.local/bin); launchd's default PATH lacks it -->
+    <key>PATH</key><string>/Users/rytty/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>SoftResourceLimits</key>
+  <dict><key>NumberOfFiles</key><integer>8192</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key>
+  <string>/Users/rytty/Library/Logs/pulse.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/rytty/Library/Logs/pulse.log</string>
+</dict>
+</plist>

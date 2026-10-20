@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pulse</title>
+<style>
+:root{
+  --bg:#ecebe6;--panel:#f4f3ef;--panel-2:#e2e1db;--ink:#121212;--ink-2:#3a3935;--mute:#6b6a64;--faint:#b4b3ac;
+  --line:rgba(0,0,0,.12);--line-2:rgba(0,0,0,.24);
+  --signal:#c6f432;--signal-bar:#86b300;--on-signal:#121212;--up:#137a43;--down:#cf3324;--warn:#9a6900;
+  --shard:#2b2e1c;--shard-edge:#5f7d00;--shard-glint:#121212;--dither:.075;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b0b0a;--panel:#131312;--panel-2:#1c1c1a;--ink:#efeee9;--ink-2:#c4c3bc;--mute:#94938c;--faint:#3d3c38;
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.22);--up:#5be696;--down:#ff6252;--warn:#ffc94d;--signal-bar:#c6f432;
+  --shard:#9fc22a;--shard-edge:#e6ffa0;--shard-glint:#ffffff;--dither:.1;}}
+:root[data-theme="dark"]{
+  --bg:#0b0b0a;--panel:#131312;--panel-2:#1c1c1a;--ink:#efeee9;--ink-2:#c4c3bc;--mute:#94938c;--faint:#3d3c38;
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.22);--up:#5be696;--down:#ff6252;--warn:#ffc94d;--signal-bar:#c6f432;
+  --shard:#9fc22a;--shard-edge:#e6ffa0;--shard-glint:#ffffff;--dither:.1;}
+
+*{box-sizing:border-box;margin:0;padding:0}
+#dither{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;image-rendering:pixelated;opacity:var(--dither)}
+.top,.hero,main{position:relative;z-index:1}
+html{scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--sans);letter-spacing:.005em;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;min-height:100vh}
+a{color:inherit;text-decoration:none}a:hover{opacity:.6}
+::selection{background:var(--signal);color:var(--on-signal)}
+.mono,td,.num{font-family:var(--mono)}
+.lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}.dim{color:var(--mute)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+
+/* top */
+.top{position:sticky;top:0;z-index:30 !important;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 28px;background:color-mix(in srgb,var(--bg) 96%,transparent);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2em;font-size:15px}
+.brand .idx{font-weight:400;color:var(--mute);font-size:11px;letter-spacing:.1em}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--signal);display:inline-block;
+  box-shadow:0 0 0 0 var(--signal);animation:beat 1.6s ease-out infinite}
+.dot.run{animation-duration:.5s}.dot.err{background:var(--down);animation:none}
+@keyframes beat{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--signal) 70%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.right{display:flex;align-items:center;gap:18px}
+.status{font-size:12px;color:var(--mute);white-space:nowrap}
+.btn{border:1px solid var(--ink);padding:8px 16px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  transition:background .15s,color .15s}
+.btn:hover:not(:disabled){background:var(--ink);color:var(--bg);opacity:1}
+.btn:disabled{opacity:.4;cursor:wait}
+.theme{width:32px;height:32px;border:1px solid var(--line-2);border-radius:50%;font-size:14px;line-height:1}
+
+/* hero: aero shards */
+.hero{height:320px;background:var(--bg);border-bottom:1px solid var(--line);overflow:hidden}
+.hero canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;pointer-events:none;
+  background:linear-gradient(to top,var(--bg) 18%,color-mix(in srgb,var(--bg) 70%,transparent) 55%,transparent)}
+.hero-in{position:absolute;z-index:1;left:28px;bottom:22px;right:28px;pointer-events:none;
+  display:flex;justify-content:space-between;align-items:flex-end;gap:24px}
+.hero-n{font:300 46px/1 var(--sans);letter-spacing:-.03em;margin-top:8px;white-space:nowrap}
+.hero-n b{font-weight:700}
+.hero-n .sep{color:var(--mute);font-weight:300;margin:0 .18em}
+.hero .lbl{text-shadow:0 0 10px var(--bg)}
+.hero-key{text-align:right}
+
+main{padding:0 28px 72px;max-width:1440px;margin:0 auto}
+section{padding-top:48px}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:18px;
+  border-bottom:1px solid var(--ink);padding-bottom:10px}
+.sh h2{font-size:13px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.sh .aside{font-size:12px;color:var(--mute)}
+
+/* read */
+.read{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:44px;align-items:start}
+.read p{font-size:21px;line-height:1.55;letter-spacing:-.008em;font-weight:400;max-width:60ch}
+.read p b{font-weight:700;background:var(--signal);color:var(--on-signal);padding:0 5px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.stat{padding:16px 18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-width:0}
+.stat .v{font:300 34px/1.1 var(--sans);letter-spacing:-.02em;margin-top:6px;white-space:nowrap}
+.stat .s{font-size:12.5px;color:var(--mute);margin-top:4px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.card{background:color-mix(in srgb,var(--bg) 72%,transparent);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:20px 20px 18px;cursor:pointer;display:flex;flex-direction:column;gap:12px;min-width:0;
+  transition:background .15s}
+.card:hover{background:var(--panel)}
+.card .row1{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card .tk{font:700 34px/1 var(--sans);letter-spacing:-.01em;margin-top:2px}
+.card .rk{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.score{font-family:var(--mono);font-weight:700;font-size:14px;padding:4px 8px;background:var(--signal);color:var(--on-signal)}
+.score.WATCH{background:transparent;color:var(--ink);border:1px solid var(--line-2)}
+.score.AVOID{background:var(--down);color:#fff}
+.card .meta{font-size:13.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.bar .t{font-size:11px;color:var(--mute);display:flex;justify-content:space-between;font-family:var(--mono)}
+.bar .t b{color:var(--ink);font-weight:600}
+.bar .track{height:4px;background:var(--panel-2);margin-top:4px}
+.bar .fill{height:100%;background:var(--ink)}
+.bar .fill.hi{background:var(--signal-bar)}
+.why{font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.why span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.why span::before{content:"+ ";color:var(--up);font-family:var(--mono)}
+.tags{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border:1px solid var(--line-2);color:var(--ink-2)}
+.tag.flag{border-color:var(--down);color:var(--down)}
+.tag.caut{border-color:color-mix(in srgb,var(--warn) 60%,transparent);color:var(--warn)}
+.tag.new{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.empty{padding:28px;color:var(--mute);font-size:13px}
+
+/* sectors + rejects */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:44px}
+.srow{display:grid;grid-template-columns:minmax(0,1.4fr) 48px 48px minmax(0,1fr) 52px;gap:12px;align-items:center;
+  padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.srow .track{height:5px;background:var(--panel-2)}.srow .fill{height:100%;background:var(--ink)}
+.srow .fill.hi{background:var(--signal-bar)}
+.rj{display:grid;grid-template-columns:72px minmax(0,1fr) 76px;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.rj .tk{font-family:var(--mono);font-weight:700;text-decoration:line-through;text-decoration-color:var(--down)}
+.rj .r{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{font-size:12px;padding:5px 9px;background:var(--panel-2);font-family:var(--mono)}
+
+/* table */
+.controls{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pill{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;padding:7px 12px;border:1px solid var(--line-2);color:var(--ink-2)}
+.pill.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.search{margin-left:auto;background:transparent;border:0;border-bottom:1px solid var(--line-2);color:var(--ink);
+  font:14px var(--mono);padding:7px 2px;width:260px;outline:none}
+.search:focus{border-color:var(--ink)}
+.tw{overflow-x:auto;border-top:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);
+  padding:11px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap;cursor:pointer;user-select:none;font-family:var(--sans)}
+th.on{color:var(--ink)}
+td{padding:10px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
+.r{text-align:right}
+.tier{font-size:11px;letter-spacing:.1em;font-weight:700;font-family:var(--sans)}
+.tier.BUY{background:var(--signal);color:var(--on-signal);padding:2px 7px}
+.tier.WATCH{color:var(--ink-2)}.tier.AVOID{color:var(--down)}
+.pp{display:inline-flex;gap:2px}
+.pp i{width:24px;height:19px;display:inline-grid;place-items:center;font-style:normal;font-size:11px;font-family:var(--mono)}
+
+/* drawer: bigger, easier to read */
+.scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 55%,transparent);backdrop-filter:blur(3px);z-index:40;display:none}
+.scrim.open{display:block}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,100vw);background:var(--bg);border-left:1px solid var(--ink);
+  z-index:50;transform:translateX(102%);transition:transform .22s cubic-bezier(.2,.8,.2,1);overflow-y:auto}
+.drawer.open{transform:none}
+.dh{position:sticky;top:0;background:var(--bg);padding:24px 32px 20px;border-bottom:1px solid var(--line);z-index:2}
+.dh .x{position:absolute;right:24px;top:24px;width:38px;height:38px;border:1px solid var(--line-2);font-size:16px}
+.dh .lbl{font-size:12px}
+.dh .tk{font:700 54px/1 var(--sans);letter-spacing:-.02em;display:flex;align-items:center;gap:14px}
+.dh .tk .score{font-size:17px;padding:5px 10px}
+.dh .sub{color:var(--ink-2);margin-top:10px;font-size:16px;line-height:1.45}
+.db{padding:6px 32px 56px;font-size:16px}
+.db h3{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;margin:32px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.about{font-size:16.5px;line-height:1.65;color:var(--ink-2)}
+.pil{display:grid;grid-template-columns:120px 1fr 44px;gap:12px;align-items:center;margin:9px 0;font-size:15px}
+.pil .lbl{font-size:13px}
+.pil .track{height:7px;background:var(--panel-2)}.pil .fill{height:100%;background:var(--ink)}.pil .fill.hi{background:var(--signal-bar)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:7px 20px;font-size:16px;line-height:1.4}
+.kv>:nth-child(even){font-family:var(--mono);text-align:right;font-size:15.5px}
+.kv>:nth-child(odd){color:var(--ink-2)}
+.db .tags .tag{font-size:12.5px;padding:4px 9px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+.mini{font-size:15px}
+.mini th,.mini td{padding:8px 8px;font-size:14.5px}
+.mini th{font-size:12px}
+.news a{display:block;padding:12px 0;border-bottom:1px solid var(--line);font-size:16.5px;line-height:1.45}
+.news .m{display:block;font-size:13px;color:var(--mute);font-family:var(--mono);margin-top:5px}
+.foot{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--mute);line-height:1.75;max-width:95ch}
+
+@media (max-width:1000px){.read,.split{grid-template-columns:1fr;gap:32px}.read p{font-size:19px}.hero-n{font-size:34px}.hero-key{display:none}}
+@media (max-width:640px){
+  .top,main{padding-left:16px;padding-right:16px}.top{padding-top:12px;padding-bottom:12px}
+  .status,.brand .idx,.hero-key{display:none}.stats{grid-template-columns:repeat(2,1fr)}.stat .v{font-size:26px}
+  .hero{height:240px}.hero-in{left:16px;right:16px;bottom:16px}.hero-n{font-size:27px;white-space:normal}.hero .lbl{font-size:10px}
+  .search{width:100%;margin-left:0}.two{grid-template-columns:1fr;gap:0}
+  .srow{grid-template-columns:minmax(0,1fr) 36px 36px 48px}.srow .track{display:none}
+  .dh,.db{padding-left:18px;padding-right:18px}.dh .tk{font-size:42px}.read p{font-size:18px}
+}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}.drawer{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="dither" aria-hidden="true"></canvas>
+
+<header class="top">
+  <div class="brand"><span class="dot" id="dot"></span>PULSE<span class="idx">03 · HUNTING SMALL, NICHE LEADERS</span></div>
+  <div class="right">
+    <span class="status" id="status">—</span>
+    <button class="btn" id="run">Run</button>
+    <button class="theme" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<div class="hero">
+  <canvas id="shards" aria-hidden="true"></canvas>
+  <div class="hero-in">
+    <div><div class="lbl" id="heroLbl">—</div><div class="hero-n" id="heroN">—</div></div>
+    <div class="hero-key lbl">click a plane to open it · hover slows the wind<br>lime tag = buy · outlined = watch</div>
+  </div>
+</div>
+
+<main>
+  <section>
+    <div class="sh"><h2>The read</h2><span class="aside" id="gen">—</span></div>
+    <div class="read">
+      <p id="read">Loading…</p>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>Best setups</h2><span class="aside" id="buyN">—</span></div>
+    <div class="cards" id="cards"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section>
+    <div class="split">
+      <div>
+        <div class="sh"><h2>Sector heat</h2><span class="aside">names · buys · avg score</span></div>
+        <div id="sectors"></div>
+      </div>
+      <div>
+        <div class="sh"><h2>Filtered out</h2><span class="aside" id="rjN">pump · dilution · liquidity</span></div>
+        <div class="chips" id="rjChips"></div>
+        <div id="rejects"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>Full ranking</h2><span class="aside" id="tblN"></span></div>
+    <div class="controls">
+      <button class="pill on" data-f="ALL">All</button>
+      <button class="pill" data-f="BUY">Buy</button>
+      <button class="pill" data-f="WATCH">Watch</button>
+      <button class="pill" data-f="AVOID">Avoid</button>
+      <button class="pill" data-f="HUNT" title="Found by the fundamentals screen, not by hype">Screen-found</button>
+      <input class="search" id="q" placeholder="ticker, name, industry…" autocomplete="off">
+    </div>
+    <div class="tw"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+  </section>
+
+  <div class="foot">
+    Pillars — G growth · Q quality &amp; survival · E estimates · V valuation · M momentum · Ea early (small, under-covered, not yet extended).
+    News and social volume decide what gets looked at and feed the pump checks; they never add to the score.
+    Hard filters drop OTC names, sub-$1 prices, illiquid tape, pre-revenue stories, dilution &gt;30%/yr, reverse splits,
+    short cash runways and pump patterns. A rules-based screen, not a backtested edge and not investment advice.
+    Data: Yahoo Finance, Massive, Finnhub, Reddit, X<span id="secNote"></span>.
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Stock detail"></aside>
+
+<script>
+"use strict";
+const $=(s,e=document)=>e.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct=(v,d=0)=>v==null?'<span class="dim">—</span>':`<span class="${v>=0?"up":"down"}">${v>=0?"+":""}${(v*100).toFixed(d)}%</span>`;
+const pct0=v=>v==null?'<span class="dim">—</span>':(v*100).toFixed(0)+"%";
+const fx=(v,d=1)=>v==null?'<span class="dim">—</span>':(+v).toFixed(d);
+const cap=v=>v==null?"—":v>=1e9?"$"+(v/1e9).toFixed(v>=1e10?0:1)+"B":"$"+(v/1e6).toFixed(0)+"M";
+const ago=iso=>{if(!iso)return"—";const m=Math.round((Date.now()-new Date(iso))/6e4);return m<1?"now":m<60?m+"m ago":m<2880?Math.round(m/60)+"h ago":Math.round(m/1440)+"d ago"};
+const until=iso=>{if(!iso)return"—";const m=Math.round((new Date(iso)-Date.now())/6e4);return m<=0?"now":m<60?m+"m":Math.round(m/60)+"h"};
+const toneWord=t=>t==null?"—":t>=.15?"Bullish":t>=.05?"Upbeat":t<=-.15?"Bearish":t<=-.05?"Cautious":"Neutral";
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const PIL=[["growth","G"],["quality","Q"],["estimates","E"],["valuation","V"],["momentum","M"],["early","Ea"]];
+
+let D={results:[],rejected:[]},FILTER="ALL",SORT={k:"rank",dir:1},LAST=null;
+
+/* ---------- theme ---------- */
+(function(){let t=null;try{t=localStorage.getItem("pulse-theme")}catch{} if(t)document.documentElement.dataset.theme=t})();
+$("#theme").onclick=()=>{const dark=matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur=document.documentElement.dataset.theme||(dark?"dark":"light");const nx=cur==="dark"?"light":"dark";
+  document.documentElement.dataset.theme=nx;try{localStorage.setItem("pulse-theme",nx)}catch{}};
+
+/* ---------- aero shards ----------
+   Canvas take on React Bits' Aero Shards: glass shards streaming along silk ribbons at five depths.
+   Tied to the run: stream speed follows market tone, density follows how many names were researched,
+   and today's top picks fly through it as clickable paper airplanes (lime tag = BUY, outlined = WATCH). */
+const shards=(()=>{
+  const cv=$("#shards"),ctx=cv.getContext("2d"),far=document.createElement("canvas"),fx2=far.getContext("2d");
+  const DEPTH=[2.7,3.9,5.6,8.1,11.6],SHARE=[.26,.23,.2,.17,.14],GROW=[1,1.3,1.8,2.6,3.6],FADE=[1,.8,.52,.32,.2];
+  const SLOPE=[[.34,-.5],[-.52,.1],[.5,-.06],[-.2,.56],[.66,.26]],TAU=Math.PI*2;
+  const still=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W=0,H=0,dpr=1,list=[],picks=[],speed=.010,t=0,last=0,born=performance.now(),on=true,raf=0,hits=[],hot=null,pace=1,over=false;
+  const mouse={x:-1e4,y:-1e4};
+  let seed=11;const rnd=()=>{seed=(seed+0x6d2b79f5)|0;let x=Math.imul(seed^(seed>>>15),1|seed);
+    x=(x+Math.imul(x^(x>>>7),61|x))^x;return((x^(x>>>14))>>>0)/4294967296};
+  function outline(){const f=rnd(),o=[];
+    if(f<.55){const sp=.17+rnd()*.15;o.push([1,(rnd()-.5)*.08],[-.5-rnd()*.25,sp*(.8+rnd()*.4)],[-.5-rnd()*.25,-sp*(.8+rnd()*.4)])}
+    else if(f<.8){const sp=.2+rnd()*.14;o.push([1,0],[(rnd()-.3)*.5,sp],[-.55-rnd()*.2,(rnd()-.5)*.1],[(rnd()-.3)*.5,-sp*(.8+rnd()*.4)])}
+    else{const n=rnd()<.5?4:5,st=.4+rnd()*.3,tu=rnd()*TAU;for(let i=0;i<n;i++){const a=tu+(i+(rnd()-.5)*.6)*TAU/n;o.push([Math.cos(a),Math.sin(a)*st])}}
+    const mx=o.reduce((a,p)=>a+p[0],0)/o.length,my=o.reduce((a,p)=>a+p[1],0)/o.length;return o.map(p=>[p[0]-mx,p[1]-my])}
+  function build(n){seed=11;list=[];DEPTH.forEach((d,l)=>{const k=Math.round(n*SHARE[l]);for(let i=0;i<k;i++){
+    const f=rnd()*2-1,g=Math.sqrt(-2*Math.log(Math.max(rnd(),1e-6)))*Math.cos(TAU*rnd());
+    list.push({l,ph:(i+rnd())/k,lane:Math.sign(f)*Math.pow(Math.abs(f),.85),depth:g,size:.6+rnd()*rnd()*1.25,shape:outline(),
+      yaw:(rnd()-.5)*.7,fl:rnd()*TAU,rate:.35+rnd()*.5,tint:rnd(),arrive:rnd(),ox:0,oy:0,vx:0,vy:0})}})}
+  function ribbon(l,s){const u=-1.3+2.6*s,sl=SLOPE[l];
+    const v=sl[0]+(sl[1]-sl[0])*s+.1*Math.sin(s*TAU*.7+l*2.3+t*.12)+.045*Math.sin(s*TAU*1.9+l+t*.07);
+    return[W/2+u*W/2,H*.4-v*H*.3]}
+  function size(){dpr=Math.min(2,devicePixelRatio||1);W=cv.clientWidth;H=cv.clientHeight;
+    for(const c of[cv,far]){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+    ctx.setTransform(dpr,0,0,dpr,0,0);fx2.setTransform(dpr,0,0,dpr,0,0)}
+  const rgb=h=>{h=h.replace("#","");const n=parseInt(h.length===3?h.replace(/./g,c=>c+c):h,16);return[(n>>16)&255,(n>>8)&255,n&255]};
+  const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0,Math.min(1,a)).toFixed(3)})`;
+  function frame(now){
+    if(!W)size();const dt=last?Math.min(50,now-last):16;last=now;pace+=((over?.22:1)-pace)*.06;if(!still)t+=dt/1000*pace;
+    const intro=still?1:Math.min(1,(now-born)/2600),dark=css("--bg").startsWith("#0");
+    const S=rgb(css("--shard")),E=rgb(css("--shard-edge")),G=rgb(css("--shard-glint")),M=rgb(css("--mute"));
+    ctx.clearRect(0,0,W,H);fx2.clearRect(0,0,W,H);
+    // survey grid
+    ctx.strokeStyle=rgba(M,.28);ctx.lineWidth=1;ctx.beginPath();
+    for(let gx=48;gx<W;gx+=96)for(let gy=40;gy<H;gy+=80){ctx.moveTo(gx-3,gy);ctx.lineTo(gx+3,gy);ctx.moveTo(gx,gy-3);ctx.lineTo(gx,gy+3)}ctx.stroke();
+    // shards, far to near
+    for(let l=DEPTH.length-1;l>=0;l--){
+      const c=l>=3?fx2:ctx,sc=DEPTH[0]/DEPTH[l],wide=H*.13*Math.sqrt(GROW[l])*sc*1.6,sp=speed*(1.35-l*.17);
+      c.globalCompositeOperation=dark?"lighter":"source-over";
+      for(const p of list){if(p.l!==l)continue;
+        const s=((p.ph+t*sp)%1+1)%1,[bx,by]=ribbon(l,s),[nx,ny]=ribbon(l,Math.min(1,s+.003));
+        let tx=nx-bx,ty=ny-by;const tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;
+        let x=bx-ty*p.lane*wide+tx*p.depth*6,y=by+tx*p.lane*wide;
+        if(l<=1){const dx=x+p.ox-mouse.x,dy=y+p.oy-mouse.y,d2=dx*dx+dy*dy;
+          if(d2<12000){const d=Math.sqrt(d2)||1,k=(1-d/110)*2.2;p.vx+=dx/d*k;p.vy+=dy/d*k}}
+        p.vx*=.86;p.vy*=.86;p.ox=(p.ox+p.vx)*.94;p.oy=(p.oy+p.vy)*.94;x+=p.ox;y+=p.oy;
+        const edge=Math.min(1,Math.min(s,1-s)*8),arrive=Math.min(1,Math.max(0,(intro-p.arrive*.6)/.4));
+        const a=FADE[l]*edge*arrive;if(a<=.01)continue;
+        const ang=Math.atan2(ty,tx)+p.yaw+Math.sin(t*p.rate+p.fl)*.35,px=11*p.size*GROW[l]*sc*(H/300+.25);
+        const ca=Math.cos(ang),sa=Math.sin(ang),flip=Math.cos(t*p.rate*1.3+p.fl); // flip = face turning to the light
+        c.beginPath();p.shape.forEach(([u,v],i)=>{const X=x+(u*ca-v*sa*flip)*px,Y=y+(u*sa+v*ca*flip)*px;i?c.lineTo(X,Y):c.moveTo(X,Y)});c.closePath();
+        c.fillStyle=rgba(S,a*(dark?.1+.07*p.tint:.06+.04*p.tint));c.fill();
+        const glint=Math.max(0,flip)**6;
+        c.strokeStyle=rgba(glint>.5?G:E,a*(dark?.32+.55*glint:.3+.45*glint));c.lineWidth=l<=1?1.1:.8;c.stroke()}
+    }
+    ctx.globalCompositeOperation="source-over";
+    // far layers get atmospheric blur
+    ctx.save();ctx.filter="blur(1.6px)";ctx.drawImage(far,0,0,W,H);ctx.restore();
+    // glow pass on dark
+    if(dark){ctx.save();ctx.globalCompositeOperation="lighter";ctx.filter="blur(10px)";ctx.globalAlpha=.28;ctx.drawImage(cv,0,0,W,H);ctx.restore()}
+    // paper airplanes: today's picks gliding through the stream on gusty wind
+    ctx.font="600 12px "+css("--mono");ctx.textBaseline="middle";
+    hits=[];const INK=rgb(css("--ink")),SIG=rgb(css("--signal")),ON=rgb(css("--on-signal")),BG=rgb(css("--bg"));
+    const PAPER=dark?[236,235,230]:[252,251,247],FOLD=dark?[150,149,142]:[196,195,188];
+    const count=Math.min(picks.length,W<520?4:8),span=W+260;
+    for(let i=0;i<count;i++){const pk=picks[i],tk=pk.tk;
+      const v=W/(13+(i%4)*2.6),phase=(i*.381966)%1;                       // px per second, staggered
+      const x=((phase*span+t*v)%span)-130;
+      const lane=H*(.14+.36*((i*.618034+.11)%1));
+      const g1=Math.sin(t*.9+i*1.9),g2=Math.sin(t*2.1+i*.7),g3=Math.sin(t*.37+i);  // slow swell + gusts
+      const y=lane+H*.07*g1+H*.025*g2+H*.04*g3;
+      const dy=H*.07*.9*Math.cos(t*.9+i*1.9)+H*.025*2.1*Math.cos(t*2.1+i*.7)+H*.04*.37*Math.cos(t*.37+i);
+      const head=Math.atan2(dy,v),roll=.62+.38*Math.cos(t*1.4+i*2.3);     // bank into the gust, wings roll
+      const edge=Math.min(1,(x+130)/120,(W+130-x)/120),a=Math.max(0,edge)*intro;if(a<=.02)continue;
+      const lit=hot===tk,k=(lit?1.25:1)*(W<520?1.25:1.7);
+      const P=(px,py)=>[x+(px*Math.cos(head)-py*roll*Math.sin(head))*k,y+(px*Math.sin(head)+py*roll*Math.cos(head))*k];
+      const nose=P(17,0),tailL=P(-12,-11),tailR=P(-12,9),fold=P(-7,0),keel=P(-10,4.5);
+      ctx.lineJoin="round";ctx.lineWidth=1;ctx.save();
+      ctx.shadowColor=dark?"rgba(0,0,0,.65)":"rgba(0,0,0,.18)";ctx.shadowBlur=10;ctx.shadowOffsetY=7;  // lift above the stream
+      ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...tailL);ctx.lineTo(...fold);ctx.lineTo(...tailR);ctx.closePath();
+      ctx.fillStyle=rgba(PAPER,a);ctx.fill();ctx.restore();
+      ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...tailL);ctx.lineTo(...fold);ctx.closePath();     // far wing
+      ctx.fillStyle=rgba(PAPER,a*.95);ctx.fill();ctx.strokeStyle=rgba(INK,a*.55);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...fold);ctx.lineTo(...keel);ctx.closePath();      // keel in shadow
+      ctx.fillStyle=rgba(FOLD,a*.95);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...tailR);ctx.lineTo(...fold);ctx.closePath();     // near wing
+      ctx.fillStyle=rgba(PAPER,a);ctx.fill();ctx.strokeStyle=rgba(INK,a*.7);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...fold);ctx.strokeStyle=rgba(INK,a*.8);ctx.lineWidth=1.3;ctx.stroke();  // centre crease
+      // tag trails behind the tail on a short string
+      const tail=P(-12,0),tx=tail[0]-8,ty=tail[1]+14,w=ctx.measureText(tk).width+(lit?28:12),buy=pk.tier==="BUY";
+      ctx.strokeStyle=rgba(INK,a*.35);ctx.beginPath();ctx.moveTo(...tail);ctx.quadraticCurveTo(tail[0]-4,ty-6,tx,ty);ctx.stroke();
+      const lx=tx-w,ly=ty;
+      ctx.fillStyle=rgba(lit?INK:buy?SIG:BG,a);ctx.fillRect(lx,ly-10,w,20);
+      if(!buy&&!lit){ctx.strokeStyle=rgba(INK,a*.6);ctx.strokeRect(lx+.5,ly-9.5,w-1,19)}
+      ctx.fillStyle=rgba(lit?BG:buy?ON:INK,a);ctx.fillText(lit?tk+" ↗":tk,lx+6,ly+.5);
+      hits.push({tk,x0:Math.min(lx,x-20)-6,y0:Math.min(ly-14,y-16),x1:Math.max(x+22,lx+w)+6,y1:Math.max(ly+14,y+16)})}
+    cv.style.cursor=hot?"pointer":"default";
+    if(!still&&on)raf=requestAnimationFrame(frame)}
+  function start(){cancelAnimationFrame(raf);last=0;raf=requestAnimationFrame(frame)}
+  function set(rows,tone,researched){const buys=rows.filter(r=>r.tier==="BUY"),watch=rows.filter(r=>r.tier==="WATCH");
+    picks=buys.concat(watch).slice(0,8).map(r=>({tk:r.ticker,tier:r.tier}));
+    speed=.007+Math.min(.012,Math.abs(tone||0)*.04);const n=Math.max(200,Math.min(380,(researched||100)*3));
+    if(Math.abs(n-list.length)>20)build(n);if(still)frame(performance.now())}
+  const hitAt=(x,y)=>(hits.find(m=>x>=m.x0&&x<=m.x1&&y>=m.y0&&y<=m.y1)||{}).tk||null;
+  cv.addEventListener("pointermove",e=>{const r=cv.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;
+    over=true;hot=hitAt(mouse.x,mouse.y);if(still)frame(performance.now())});
+  cv.addEventListener("pointerleave",()=>{mouse.x=mouse.y=-1e4;over=false;hot=null});
+  cv.addEventListener("click",e=>{const r=cv.getBoundingClientRect(),tk=hitAt(e.clientX-r.left,e.clientY-r.top);if(tk)openT(tk)});
+  addEventListener("resize",()=>{size();if(still)frame(performance.now())});
+  new IntersectionObserver(([e])=>{on=e.isIntersecting&&!document.hidden;if(on&&!still)start()}).observe(cv);
+  document.addEventListener("visibilitychange",()=>{on=!document.hidden;if(on&&!still)start()});
+  build(300);if(!still)start();
+  return{set};
+})();
+
+/* ---------- dither field ----------
+   Faint page background after React Bits' Dither: a domain-warped noise field (fbm of |perlin|)
+   quantised with an 8x8 Bayer matrix. Rendered at one canvas pixel per dither cell and scaled up
+   with pixelated rendering, ~20fps, paused when the tab is hidden. */
+(()=>{
+  const cv=$("#dither"),gl=cv.getContext("webgl",{premultipliedAlpha:true,antialias:false,alpha:true});
+  if(!gl){cv.remove();return}
+  const CELL=3,still=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const vs="attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
+  const fs=`precision highp float;
+uniform vec2 R;uniform float T;uniform vec3 C;uniform vec2 M;
+vec4 m289(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 perm(vec4 x){return m289(((x*34.)+1.)*x);}
+vec2 fd(vec2 t){return t*t*t*(t*(t*6.-15.)+10.);}
+float pn(vec2 P){vec4 Pi=floor(P.xyxy)+vec4(0.,0.,1.,1.),Pf=fract(P.xyxy)-vec4(0.,0.,1.,1.);Pi=m289(Pi);
+  vec4 i=perm(perm(Pi.xzxz)+Pi.yyww),gx=fract(i*(1./41.))*2.-1.,gy=abs(gx)-.5;gx-=floor(gx+.5);
+  vec2 a=vec2(gx.x,gy.x),b=vec2(gx.y,gy.y),c=vec2(gx.z,gy.z),d=vec2(gx.w,gy.w);
+  vec4 n=1.79284291400159-.85373472095314*vec4(dot(a,a),dot(c,c),dot(b,b),dot(d,d));a*=n.x;c*=n.y;b*=n.z;d*=n.w;
+  vec2 f=fd(Pf.xy),x=mix(vec2(dot(a,Pf.xy),dot(c,vec2(Pf.x,Pf.w))),vec2(dot(b,vec2(Pf.z,Pf.y)),dot(d,Pf.zw)),f.x);
+  return 2.3*mix(x.x,x.y,f.y);}
+float fbm(vec2 p){float v=0.,a=1.;for(int i=0;i<4;i++){v+=a*abs(pn(p));p*=3.;a*=.3;}return v;}
+float b2(vec2 a){a=floor(a);return fract(a.x/2.+a.y*a.y*.75);}
+float b8(vec2 a){return (b2(.25*a)*.25+b2(.5*a))*.25+b2(a);}
+void main(){vec2 uv=gl_FragCoord.xy/R-.5;uv.x*=R.x/R.y;
+  float f=fbm(uv+fbm(uv-T*.05));
+  f-=.45*(1.-smoothstep(0.,.32,length(uv-M)));          // the cursor clears a soft hole, like the original's erase
+  float v=clamp(f+(b8(gl_FragCoord.xy)-.25)/3.,0.,1.);   // 4 colour levels
+  float a=floor(v*3.+.5)/3.;gl_FragColor=vec4(C*a,a);}`;
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return gl.getShaderParameter(o,gl.COMPILE_STATUS)?o:null};
+  const v=sh(gl.VERTEX_SHADER,vs),f=sh(gl.FRAGMENT_SHADER,fs);if(!v||!f){cv.remove();return}
+  const pr=gl.createProgram();gl.attachShader(pr,v);gl.attachShader(pr,f);gl.linkProgram(pr);gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,"p");gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U=n=>gl.getUniformLocation(pr,n),uR=U("R"),uT=U("T"),uC=U("C"),uM=U("M");
+  let w=0,h=0,last=0,t0=performance.now(),mx=-9,my=-9,tmx=-9,tmy=-9;
+  function size(){w=Math.ceil(innerWidth/CELL);h=Math.ceil(innerHeight/CELL);cv.width=w;cv.height=h;gl.viewport(0,0,w,h)}
+  addEventListener("pointermove",e=>{tmx=(e.clientX/innerWidth-.5)*innerWidth/innerHeight;tmy=.5-e.clientY/innerHeight});
+  function draw(now){
+    if(!still&&!document.hidden)requestAnimationFrame(draw);
+    if(now-last<48&&!still)return;last=now;
+    mx+=(tmx-mx)*.15;my+=(tmy-my)*.15;
+    const c=css("--ink").replace("#","");const n=parseInt(c,16);
+    gl.uniform2f(uR,w,h);gl.uniform1f(uT,still?0:(now-t0)/1000);gl.uniform3f(uC,(n>>16&255)/255,(n>>8&255)/255,(n&255)/255);gl.uniform2f(uM,mx,my);
+    gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLES,0,3)}
+  size();addEventListener("resize",()=>{size();if(still)draw(performance.now())});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!still)requestAnimationFrame(draw)});
+  requestAnimationFrame(draw);
+})();
+
+/* ---------- render ---------- */
+function stat(l,v,s){return`<div class="stat"><div class="lbl">${l}</div><div class="v">${v}</div><div class="s">${s||"&nbsp;"}</div></div>`}
+function renderRead(){
+  const S=D.summary||{},M=S.market||{},so=S.social||{};
+  const r=esc(D.read||"").replace(/Best setup: ([A-Z.\-]+)/,(m,t)=>`Best setup: <b>${t}</b>`);
+  $("#read").innerHTML=r||"No read yet.";
+  const mk=k=>{const m=M[k]||{};return [pct(m.r1m,1),`1D ${m.r1d==null?"—":(m.r1d>=0?"+":"")+(m.r1d*100).toFixed(1)+"%"}`]};
+  const [iwm,iwmS]=mk("IWM"),[spy,spyS]=mk("SPY"),[qqq,qqqS]=mk("QQQ");const vix=M["^VIX"]||{};
+  $("#stats").innerHTML=[
+    stat("Small caps · IWM 1M",iwm,iwmS),stat("S&P · SPY 1M",spy,spyS),stat("Nasdaq · QQQ 1M",qqq,qqqS),
+    stat("VIX",vix.price==null?"—":vix.price.toFixed(1),vix.r5d==null?"":"5D "+(vix.r5d>=0?"+":"")+(vix.r5d*100).toFixed(0)+"%"),
+    stat("News tone",toneWord(S.news_tone),`${S.news_tone==null?"—":S.news_tone.toFixed(2)} · ${S.news_items||0} headlines`),
+    stat("Social tone",toneWord(so.tone),so.posts?`${so.tone.toFixed(2)} · ${so.posts.toLocaleString()} posts · ${ago(so.scraped_at)}`:"no scrape"),
+    stat("Screened",(S.hunt_total||0).toLocaleString(),"$50M–$20B, revenue +25%"),
+    stat("Researched",S.researched??"—",`${D.universe||0} passed every filter`),
+    stat("Filtered out",S.rejected??"—","pump · dilution · liquidity"),
+  ].join("");
+  $("#gen").textContent=D.generated_at?new Date(D.generated_at).toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"})+(D.took_s?` · ${D.took_s}s`:""):"—";
+  $("#secNote").textContent=S.sec_enabled?", SEC EDGAR":"";
+}
+function bars(p){return`<div class="bars">${PIL.map(([k,l])=>{const s=p[k];return`<div class="bar"><div class="t"><span>${l}</span><b>${s==null?"–":Math.round(s)}</b></div><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div></div>`}).join("")}</div>`}
+function card(r){
+  const tags=[r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
+    ...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.slice(0,2).map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
+  return`<div class="card" data-t="${esc(r.ticker)}">
+    <div class="row1"><div><div class="rk">#${r.rank}${r.rank_change?` · ${r.rank_change>0?"▲":"▼"}${Math.abs(r.rank_change)}`:""}</div><div class="tk">${esc(r.ticker)}</div></div><span class="score ${r.tier}">${r.score.toFixed(0)}</span></div>
+    <div class="meta">${esc(r.name)} · ${cap(r.market_cap)} · ${esc(r.industry||r.sector||"")}</div>
+    ${bars(r.pillars)}
+    <div class="why">${r.strengths.slice(0,3).map(s=>`<span>${esc(s.label)} ${esc(s.value)}</span>`).join("")}</div>
+    ${tags?`<div class="tags">${tags}</div>`:""}</div>`}
+function renderCards(){
+  const R=D.results;let top=R.filter(r=>r.tier==="BUY");
+  if(top.length<4)top=top.concat(R.filter(r=>r.tier==="WATCH").slice(0,8-top.length));
+  top=top.slice(0,12);
+  $("#buyN").textContent=`${(D.counts||{}).BUY||0} buy · ${(D.counts||{}).WATCH||0} watch · ${(D.counts||{}).AVOID||0} avoid`;
+  $("#cards").innerHTML=top.length?top.map(card).join(""):'<div class="empty">Nothing clears the bar this run.</div>';
+}
+function renderSectors(){
+  const S=(D.summary||{}).sector_heat||[];const mx=Math.max(1,...S.map(s=>s.count));
+  $("#sectors").innerHTML=S.length?S.slice(0,10).map(s=>`<div class="srow"><span>${esc(s.sector)}</span><span class="mono r">${s.count}</span><span class="mono r ${s.buys?"":"dim"}">${s.buys}</span>
+    <div class="track"><div class="fill ${s.avg>=60?"hi":""}" style="width:${s.avg}%"></div></div><span class="mono r">${s.avg.toFixed(0)}</span></div>`).join(""):'<div class="empty">—</div>';
+}
+function renderRejects(){
+  const J=D.rejected||[],rs=(D.summary||{}).reject_reasons||[];
+  $("#rjN").textContent=`${J.length} names`;
+  $("#rjChips").innerHTML=rs.map(([k,n])=>`<span class="chip">${esc(k)} · ${n}</span>`).join("");
+  $("#rejects").innerHTML=J.length?J.slice(0,14).map(r=>`<div class="rj"><span class="tk">${esc(r.ticker)}</span><span class="r" title="${esc(r.reasons.join(" · "))}">${esc(r.reasons.join(" · "))}</span><span class="mono r dim">${cap(r.market_cap)}</span></div>`).join(""):'<div class="empty">Nothing filtered.</div>';
+}
+
+const COLS=[
+  {k:"rank",l:"#",v:r=>r.rank,f:r=>`<span class="dim">${r.rank}</span>`},
+  {k:"ticker",l:"Ticker",v:r=>r.ticker,f:r=>`<b>${esc(r.ticker)}</b>${r.new?' <span class="tag new">new</span>':""}`},
+  {k:"tier",l:"Call",v:r=>({BUY:0,WATCH:1,AVOID:2})[r.tier],f:r=>`<span class="tier ${r.tier}">${r.tier}</span>`},
+  {k:"score",l:"Score",c:"r",v:r=>r.score,f:r=>`<b>${r.score.toFixed(1)}</b>`},
+  {k:"pil",l:"G Q E V M Ea",v:r=>r.score,f:r=>`<span class="pp">${PIL.map(([k])=>{const s=r.pillars[k];return`<i style="background:${s>=70?"var(--signal)":"transparent"};color:${s>=70?"var(--on-signal)":s<35?"var(--down)":"var(--ink-2)"}">${s==null?"–":Math.round(s)}</i>`}).join("")}</span>`},
+  {k:"mcap",l:"Mkt cap",c:"r",v:r=>r.market_cap,f:r=>cap(r.market_cap)},
+  {k:"ind",l:"Industry",v:r=>r.industry||"",f:r=>`<span class="dim">${esc((r.industry||r.sector||"").slice(0,26))}</span>`},
+  {k:"rg",l:"Rev gr",c:"r",v:r=>r.key.rev_growth,f:r=>pct(r.key.rev_growth)},
+  {k:"acc",l:"Accel",c:"r",v:r=>r.key.rev_accel,f:r=>r.key.rev_accel==null?'<span class="dim">—</span>':`<span class="${r.key.rev_accel>=0?"up":"down"}">${r.key.rev_accel>=0?"+":""}${(r.key.rev_accel*100).toFixed(0)}pt</span>`},
+  {k:"gm",l:"GM",c:"r",v:r=>r.key.gross_margin,f:r=>pct0(r.key.gross_margin)},
+  {k:"dil",l:"Shares YoY",c:"r",v:r=>r.key.dilution,f:r=>r.key.dilution==null?'<span class="dim">—</span>':`<span class="${r.key.dilution>.1?"down":""}">${r.key.dilution>=0?"+":""}${(r.key.dilution*100).toFixed(0)}%</span>`},
+  {k:"rel",l:"3M vs SPY",c:"r",v:r=>r.perf.rel3m,f:r=>pct(r.perf.rel3m)},
+  {k:"y1",l:"1Y",c:"r",v:r=>r.perf.r1y,f:r=>pct(r.perf.r1y)},
+  {k:"an",l:"Analysts",c:"r",v:r=>r.analysts,f:r=>r.analysts||'<span class="dim">0</span>'},
+  {k:"inst",l:"Inst %",c:"r",v:r=>r.key.inst,f:r=>pct0(r.key.inst)},
+  {k:"news",l:"News",c:"r",v:r=>r.discovery?.news||0,f:r=>r.discovery?.news||'<span class="dim">0</span>'},
+  {k:"soc",l:"Social",c:"r",v:r=>r.discovery?.social||0,f:r=>r.discovery?.social||'<span class="dim">0</span>'},
+  {k:"tone",l:"Tone",c:"r",v:r=>r.sentiment?.news_tone,f:r=>{const t=r.sentiment?.news_tone;return t==null?'<span class="dim">—</span>':`<span class="${t>=.05?"up":t<=-.05?"down":"dim"}">${t>=0?"+":""}${t.toFixed(2)}</span>`}},
+  {k:"er",l:"Earnings",c:"r",v:r=>r.days_to_earnings??999,f:r=>r.days_to_earnings==null||r.days_to_earnings<0?'<span class="dim">—</span>':`<span class="${r.days_to_earnings<=7?"warn":""}">${r.days_to_earnings}d</span>`},
+];
+function renderTable(){
+  $("#thead").innerHTML=COLS.map(c=>`<th class="${c.c||""} ${SORT.k===c.k?"on":""}" data-k="${c.k}">${c.l}${SORT.k===c.k?(SORT.dir>0?" ↑":" ↓"):""}</th>`).join("");
+  const q=$("#q").value.trim().toLowerCase(),col=COLS.find(c=>c.k===SORT.k);
+  const rs=D.results.filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:r.tier===FILTER))
+    .filter(r=>!q||[r.ticker,r.name,r.sector,r.industry].join(" ").toLowerCase().includes(q))
+    .sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*SORT.dir});
+  $("#tblN").textContent=`${rs.length} of ${D.results.length}`;
+  $("#tbody").innerHTML=rs.length?rs.map(r=>`<tr data-t="${esc(r.ticker)}">${COLS.map(c=>`<td class="${c.c||""}">${c.f(r)}</td>`).join("")}</tr>`).join("")
+    :`<tr><td colspan="${COLS.length}"><div class="empty">No matches.</div></td></tr>`;
+}
+
+/* ---------- drawer ---------- */
+function openT(t){
+  const r=D.results.find(x=>x.ticker===t);if(!r)return;
+  const pil=PIL.map(([k,l])=>{const s=r.pillars[k];const name={growth:"Growth",quality:"Quality",estimates:"Estimates",valuation:"Valuation",momentum:"Momentum",early:"Early"}[k];
+    return`<div class="pil"><span class="lbl">${name}</span><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div><span class="mono r">${s==null?"—":Math.round(s)}</span></div>`}).join("");
+  const tags=[...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
+  const kv=arr=>arr.length?arr.map(s=>`<div>${esc(s.label)}</div><div>${esc(s.value)}</div>`).join(""):'<div class="dim">—</div><div></div>';
+  const byP=PIL.map(([k])=>{const ms=r.metrics.filter(m=>m.pillar===k);return ms.length?`<tr><th colspan="3">${k}</th></tr>`+ms.map(m=>`<tr><td style="font-family:var(--sans)">${esc(m.label)}</td><td class="r">${esc(m.value)}</td><td class="r" style="color:${m.score>=70?"var(--up)":m.score<35?"var(--down)":"var(--ink-2)"}">${m.score}</td></tr>`).join(""):""}).join("");
+  const Q=r.quarters||{},rv=Q["Total Revenue"]||[],gp=Q["Gross Profit"]||[],oi=Q["Operating Income"]||[],dts=Q._dates||[];
+  const qt=rv.length?`<table class="mini"><thead><tr><th>Quarter</th><th class="r">Revenue</th><th class="r">GM</th><th class="r">Op margin</th></tr></thead><tbody>${
+    rv.map((v,i)=>`<tr><td>${esc(dts[i]||"")}</td><td class="r">${v==null?"—":cap(v)}</td><td class="r">${v&&gp[i]!=null?(gp[i]/v*100).toFixed(0)+"%":"—"}</td><td class="r">${v&&oi[i]!=null?(oi[i]/v*100).toFixed(0)+"%":"—"}</td></tr>`).join("")}</tbody></table>`:'<div class="dim">No quarterly data.</div>';
+  const eh=r.estimates.earnings_history||[];
+  const ehT=eh.length?`<table class="mini"><thead><tr><th>Quarter</th><th class="r">Est</th><th class="r">Actual</th><th class="r">Surprise</th></tr></thead><tbody>${eh.map(e=>`<tr><td>${esc(String(e.quarter||"").slice(0,10))}</td><td class="r">${fx(e.epsEstimate,2)}</td><td class="r">${fx(e.epsActual,2)}</td><td class="r">${pct(e.surprisePercent,1)}</td></tr>`).join("")}</tbody></table>`:'<div class="dim">No history.</div>';
+  const se=r.sentiment||{},so=se.social||{},sec=r.sec;
+  const news=(r.headlines||[]).length?r.headlines.map(h=>`<a href="${esc(h.url)}" target="_blank" rel="noopener noreferrer">${esc(h.title)}<span class="m">${esc(h.publisher||"")}${h.wire?" · press release":""} · ${ago(h.published)} · tone ${h.tone>=0?"+":""}${(h.tone??0).toFixed(2)}${h.label?" · "+esc(h.label):""}</span></a>`).join(""):'<div class="dim">No recent headlines.</div>';
+  const posts=(so.posts||[]).map(p=>`<a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">${esc(p.text)}<span class="m">${p.source==="reddit"?"r/"+esc(p.sub||""):"X"} · tone ${p.tone>=0?"+":""}${p.tone.toFixed(2)}</span></a>`).join("");
+  const d=r.discovery||{};const src=[d.hunt?"fundamentals screen":null,d.news?`${d.news} news`:null,d.social?`${d.social} social`:null,d.trending?"Yahoo trending":null,d.small_cap_gainers?"small-cap gainer":null].filter(Boolean).join(" · ");
+  const k=r.key;
+  $("#drawer").innerHTML=`
+  <div class="dh"><button class="x" id="close" aria-label="Close">✕</button>
+    <div class="lbl">#${r.rank} · ${esc(r.sector||"")} · found via ${esc(src||"—")}</div>
+    <div class="tk" style="margin-top:8px">${esc(r.ticker)} <span class="score ${r.tier}">${r.tier} ${r.score.toFixed(0)}</span></div>
+    <div class="sub">${esc(r.name)} · ${esc(r.industry||"")} · ${cap(r.market_cap)} · $${fx(r.price,2)}${r.website?` · <a href="${esc(r.website)}" target="_blank" rel="noopener noreferrer">site ↗</a>`:""}</div>
+  </div>
+  <div class="db">
+    ${r.about?`<h3>What they do</h3><p class="about">${esc(r.about)}${r.about.length>=420?"…":""}</p>`:""}
+    <h3>Pillars</h3>${pil}
+    ${tags?`<div class="tags" style="margin-top:12px">${tags}</div>`:""}
+    <div class="two"><div><h3>Strengths</h3><div class="kv">${kv(r.strengths)}</div></div><div><h3>Weaknesses</h3><div class="kv">${kv(r.weaknesses)}</div></div></div>
+    <h3>Financials</h3><div class="kv">
+      <div>Revenue (TTM)</div><div>${k.revenue?cap(k.revenue):"—"}</div><div>Revenue growth</div><div>${pct(k.rev_growth)}</div>
+      <div>Latest quarter YoY</div><div>${pct(k.q_yoy)}</div><div>Gross / op margin</div><div>${pct0(k.gross_margin)} / ${pct0(k.op_margin)}</div>
+      <div>Share count YoY</div><div>${pct(k.dilution,1)}</div><div>Cash runway</div><div>${k.runway_q==null?"—":k.runway_q>=99?"cash positive":k.runway_q.toFixed(1)+" quarters"}</div>
+      <div>Institutions / insiders</div><div>${pct0(k.inst)} / ${pct0(k.insiders)}</div><div>Short float</div><div>${pct0(k.short_float)}</div>
+      <div>EV / sales</div><div>${fx(k.ev_sales,1)}x</div><div>Forward P/E</div><div>${k.fwd_pe==null?"—":k.fwd_pe<0?"neg":fx(k.fwd_pe,1)}</div>
+      <div>Avg $ volume (20d)</div><div>${k.dollar_vol?cap(k.dollar_vol):"—"}</div><div>Analysts · target</div><div>${r.analysts} · ${pct(k.target_upside)}</div>
+    </div>
+    <h3>Quarters</h3>${qt}
+    <div class="two"><div><h3>Performance</h3><div class="kv">
+      <div>1 day</div><div>${pct(r.perf.r1d,1)}</div><div>5 days</div><div>${pct(r.perf.r5d,1)}</div><div>1 month</div><div>${pct(r.perf.r1m,1)}</div>
+      <div>3 months</div><div>${pct(r.perf.r3m,1)}</div><div>1 year</div><div>${pct(r.perf.r1y,0)}</div><div>Off 52w high</div><div>${pct(r.perf.off_high,1)}</div></div></div>
+      <div><h3>Sentiment</h3><div class="kv">
+      <div>News tone</div><div>${se.news_tone==null?"—":toneWord(se.news_tone)+" "+se.news_tone.toFixed(2)}</div>
+      <div>Positive / negative</div><div>${se.news_pos||0} / ${se.news_neg||0}</div>
+      <div>Press-release share</div><div>${se.wire_share==null?"—":pct0(se.wire_share)}</div>
+      <div>Social mentions</div><div>${so.mentions||0}${so.mentions?` (${so.reddit} Reddit · ${so.x} X)`:""}</div>
+      <div>Social tone</div><div>${so.tone==null?"—":toneWord(so.tone)+" "+so.tone.toFixed(2)}</div>
+      <div>Next earnings</div><div>${r.next_earnings?esc(r.next_earnings.slice(0,10)):"—"}</div></div></div></div>
+    ${sec?`<h3>SEC filings</h3><div class="kv"><div>Offerings / shelves (120d)</div><div>${sec.offerings_120d.length?esc(sec.offerings_120d.join(", ")):"none"}</div><div>Insider filings (90d)</div><div>${sec.form4_90d}</div><div>Late filings · delisting notice</div><div>${sec.late_filings_180d} · ${sec.delisting_notice_180d?"yes":"no"}</div></div>`:""}
+    <h3>All metrics</h3><table class="mini"><tbody>${byP}</tbody></table>
+    <h3>Earnings surprises</h3>${ehT}
+    <h3>Headlines</h3><div class="news">${news}</div>
+    ${posts?`<h3>Reddit / X</h3><div class="news">${posts}</div>`:""}
+  </div>`;
+  $("#drawer").classList.add("open");$("#scrim").classList.add("open");$("#drawer").scrollTop=0;$("#close").onclick=closeT;
+}
+function closeT(){$("#drawer").classList.remove("open");$("#scrim").classList.remove("open")}
+
+/* ---------- data ---------- */
+function renderAll(){renderRead();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results,(D.summary||{}).news_tone,(D.summary||{}).researched)}
+function renderHero(){const c=D.counts||{},S=D.summary||{};
+  $("#heroN").innerHTML=`<b>${c.BUY||0}</b> to buy<span class="sep">/</span>${c.WATCH||0} watch<span class="sep">/</span>${c.AVOID||0} avoid`;
+  $("#heroLbl").textContent=`${(S.hunt_total||0).toLocaleString()} screened · ${S.researched||0} researched · ${S.rejected||0} filtered out`}
+async function load(){
+  try{D=await (await fetch("/api/rankings",{cache:"no-store"})).json();D.results=D.results||[];D.rejected=D.rejected||[];LAST=D.generated_at;renderAll()}
+  catch(e){$("#read").textContent="Can't reach the Pulse server."}
+}
+async function poll(){
+  try{const s=await (await fetch("/api/status",{cache:"no-store"})).json();
+    $("#dot").className="dot"+(s.running?" run":s.last_error?" err":"");
+    $("#run").disabled=s.running;$("#run").textContent=s.running?"Running":"Run";
+    $("#status").textContent=s.running?"hunting…":s.last_error?"last run failed":`ran ${ago(s.last_run)} · next ${until(s.next_run)}`;
+    $("#status").title=s.last_error||"";
+    if(!s.running&&s.last_run&&s.last_run!==LAST)load();
+  }catch{$("#dot").className="dot err";$("#status").textContent="offline"}
+}
+$("#run").onclick=async()=>{$("#run").disabled=true;await fetch("/api/run",{method:"POST"});poll()};
+document.querySelectorAll(".pill").forEach(p=>p.onclick=()=>{document.querySelectorAll(".pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");FILTER=p.dataset.f;renderTable()});
+$("#q").oninput=renderTable;
+$("#thead").onclick=e=>{const th=e.target.closest("th");if(!th)return;const k=th.dataset.k;SORT=SORT.k===k?{k,dir:-SORT.dir}:{k,dir:["rank","ticker","tier","er","ind"].includes(k)?1:-1};renderTable()};
+document.addEventListener("click",e=>{const el=e.target.closest("[data-t]");if(el&&!e.target.closest("#drawer"))openT(el.dataset.t)});
+$("#scrim").onclick=closeT;document.addEventListener("keydown",e=>{if(e.key==="Escape")closeT()});
+load();poll();setInterval(poll,15000);
+</script>
+</body>
+</html>

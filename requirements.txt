@@ -1,0 +1,5 @@
+yfinance>=0.2.58
+pandas
+requests
+vaderSentiment>=3.3.2
+scrapling>=0.4
