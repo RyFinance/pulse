@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" width="1280" height="420" role="img" aria-label="PULSE: find the next one at 500 million, not 500 billion">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .title { font-size: 78px; font-weight: 700; letter-spacing: 16px; fill: #e9e9e9; }
+    .sub { font-size: 19px; letter-spacing: 6px; fill: #8a8a8a; }
+    .tick { font-size: 15px; letter-spacing: 2px; fill: #96aaff; }
+    .tick.buy { fill: #9be7c4; }
+    .tick.avoid { fill: #5a5a5a; }
+    .glyph { font-size: 11px; fill: #96aaff; opacity: .14; }
+    .beat { fill: none; stroke: #9be7c4; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+            stroke-dasharray: 260 1400; animation: run 3.2s linear infinite; }
+    .trace { fill: none; stroke: #9be7c4; stroke-opacity: .14; stroke-width: 2; }
+    .diamond { fill: #9be7c4; animation: glint 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes run { from { stroke-dashoffset: 1660; } to { stroke-dashoffset: 0; } }
+    @keyframes glint { 50% { opacity: .35; transform: scale(.8); } }
+    @media (prefers-reduced-motion: reduce) { .beat, .diamond { animation: none; } }
+  </style>
+  <rect class="bg" width="1280" height="420"/>
+  <text class="mono glyph" x="24" y="34">REV +41% · GROSS MARGIN ↑ · 4 ANALYSTS · INST 38% · NO DILUTION · RUNWAY 9Q · EPS REV +6% · OFF 52W HIGH 4%</text>
+
+  <path class="trace" d="M60 250 L330 250 L360 250 L380 200 L400 300 L420 140 L445 330 L470 250 L640 250 L660 250 L680 215 L700 285 L720 175 L745 300 L770 250 L940 250 L960 250 L980 205 L1000 290 L1020 160 L1045 315 L1070 250 L1220 250"/>
+  <path class="beat" d="M60 250 L330 250 L360 250 L380 200 L400 300 L420 140 L445 330 L470 250 L640 250 L660 250 L680 215 L700 285 L720 175 L745 300 L770 250 L940 250 L960 250 L980 205 L1000 290 L1020 160 L1045 315 L1070 250 L1220 250"/>
+
+  <text class="mono title" x="648" y="120" text-anchor="middle">PULSE</text>
+
+  <text class="mono tick buy" x="360" y="370">◆ $480M  BUY 78</text>
+  <text class="mono tick" x="640" y="370" text-anchor="middle">$2.1B  WATCH 66</text>
+  <text class="mono tick avoid" x="920" y="370" text-anchor="end">PUMP  AVOID</text>
+  <rect class="diamond" x="1160" y="356" width="12" height="12" transform="rotate(45 1166 362)"/>
+  <text class="mono sub" x="640" y="404" text-anchor="middle">FIND THE NEXT ONE AT $500M, NOT $500B</text>
+</svg>

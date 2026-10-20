@@ -1,7 +1,20 @@
-# Pulse
+<p align="center">
+  <img src="assets/banner.svg" alt="PULSE: find the next one at $500M, not $500B" width="100%">
+</p>
 
-Hunts small and niche companies that are quietly dominating — before everyone knows the name.
-Not "MU has crazy revenue"; the point is finding the next one while it's $500M, not $500B.
+<p align="center">
+  <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-0a0a0a?style=flat-square&labelColor=0a0a0a&color=96aaff">
+  <img alt="universe" src="https://img.shields.io/badge/universe-US%20%2450M%E2%80%93%24500B-0a0a0a?style=flat-square&labelColor=0a0a0a&color=e9e9e9">
+  <img alt="refresh" src="https://img.shields.io/badge/re--ranks-every%2060%20min-0a0a0a?style=flat-square&labelColor=0a0a0a&color=9be7c4">
+  <img alt="anti-pump" src="https://img.shields.io/badge/anti--pump-gated-0a0a0a?style=flat-square&labelColor=0a0a0a&color=8a8a8a">
+</p>
+
+<p align="center"><b>Pulse hunts small and niche companies that are quietly dominating, before everyone knows the name.</b><br>
+Not "MU has crazy revenue." The point is finding the next one while it's $500M, not $500B.</p>
+
+---
+
+## How it hunts
 
 ```
 hunt      Yahoo screen: every US-listed $50M–$500B stock with quarterly revenue +25%,
@@ -33,14 +46,14 @@ press-release-heavy news, social hype with no independent coverage, estimate cut
 
 News and social volume decide what gets looked at and feed the pump checks. They never add to the score.
 
-## In each stock's panel
+## Inside every pick
 
 - **Chart** — line chart in the style of Apple Stocks, 1D / 1W / 1M / 3M / 1Y / 3Y / 5Y / 10Y. Hover to scrub;
   click to pin a date and see the move from there to any point (or to now).
 - **Competitors** — the 3 closest US-listed peers by size in the same sub-industry (Finnhub peers), scored with the
   same Pulse model, with a verdict on which is strongest and why.
 
-## Files
+## What's in the repo
 
 | File | What it does |
 |---|---|
@@ -54,7 +67,7 @@ News and social volume decide what gets looked at and feed the pump checks. They
 Setup: `pip install -r requirements.txt`, install the `rdt` CLI (rdt-cli) for Reddit and have Google Chrome
 installed for X. Run `python save_x_session.py` once to log in to X.
 
-## Run
+## Run it
 
 ```bash
 python ranker.py      # one pass → rankings.json (re-runs scraper.py if its data is > 50 min old)
@@ -68,4 +81,9 @@ turns on SEC EDGAR checks (offerings, delisting notices, late filings, insider f
 `launchctl setenv` so it never lands in a file. Tunables: `PULSE_MIN_MCAP`, `PULSE_MAX_MCAP`,
 `PULSE_MIN_DOLLAR_VOL`, `PULSE_MIN_REVENUE`, `PULSE_HUNT_DEEP`, `PULSE_HEAT_DEEP`, `PULSE_INTERVAL_MIN`, `PULSE_SCRAPE=0`.
 
-A rules-based screen, not a backtested edge and not investment advice.
+---
+
+<p align="center">
+  Built by <a href="https://x.com/slime2riches">@slime2riches</a> · <a href="https://slimecode.tech">slimecode.tech</a><br>
+  <sub>A rules-based screen, not a backtested edge and not investment advice.</sub>
+</p>
