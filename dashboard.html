@@ -237,7 +237,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
   <canvas id="shards" aria-hidden="true"></canvas>
   <div class="hero-in">
     <div><div class="lbl" id="heroLbl">—</div><div class="hero-n" id="heroN">—</div></div>
-    <div class="hero-key lbl">click a plane to open it · hover slows the wind<br>lime tag = buy · outlined = watch</div>
+    <div class="hero-key lbl">click a plane to open it · grab one and chuck it, it comes back<br>lime tag = buy · outlined = watch</div>
   </div>
 </div>
 
@@ -327,8 +327,26 @@ const shards=(()=>{
   const DEPTH=[2.7,3.9,5.6,8.1,11.6],SHARE=[.26,.23,.2,.17,.14],GROW=[1,1.3,1.8,2.6,3.6],FADE=[1,.8,.52,.32,.2];
   const SLOPE=[[.34,-.5],[-.52,.1],[.5,-.06],[-.2,.56],[.66,.26]],TAU=Math.PI*2;
   const still=matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let W=0,H=0,dpr=1,list=[],picks=[],speed=.010,t=0,last=0,born=performance.now(),on=true,raf=0,hits=[],hot=null,pace=1,over=false;
-  const mouse={x:-1e4,y:-1e4};
+  let W=0,H=0,dpr=1,list=[],picks=[],speed=.010,t=0,last=0,born=performance.now(),on=true,raf=0,hits=[],hot=null,pace=1,over=false,span=1;
+  const mouse={x:-1e4,y:-1e4},fly={};let grab=null;   // fly: planes off the wind (held, thrown, flying home)
+  const turn=(a,b,k)=>a+((((b-a)%TAU)+TAU*1.5)%TAU-Math.PI)*k;
+  /* one plane off the wind: held follows the pointer; thrown coasts with drag and a little gravity;
+     then it banks round like a boomerang and homes back onto its slot in the wind (tx,ty,th). */
+  function steer(f,tx,ty,th,dt){
+    if(f.mode==="held"){const ox=f.x,oy=f.y,k=Math.min(1,dt*28);f.x+=(mouse.x+f.gx-f.x)*k;f.y+=(mouse.y+f.gy-f.y)*k;
+      const vx=(f.x-ox)/dt,vy=(f.y-oy)/dt;if(Math.hypot(vx,vy)>60)f.head=turn(f.head,Math.atan2(vy,vx),Math.min(1,dt*12));return}
+    f.tm+=dt;if(tx-f.x>span/2)tx-=span;else if(f.x-tx>span/2)tx+=span;   // home on the nearest wrap of its slot
+    const dx=tx-f.x,dy=ty-f.y,d=Math.hypot(dx,dy)||1;
+    if(f.mode==="thrown"){const g=Math.exp(-dt*2.6);f.vx*=g;f.vy=f.vy*g+170*dt;
+      if(f.tm>.55||Math.hypot(f.vx,f.vy)<300){f.mode="home";f.tm=0;f.curl=Math.sign(f.vx*dy-f.vy*dx)||1}}
+    else{// the boomerang bank: steer at an angle off the target that unwinds over ~1s, then brake on arrival
+      const sp=Math.min(1700,90+d*3),a=f.curl*1.1*Math.exp(-f.tm*1.6)*Math.min(1,d/150),c=Math.cos(a),s=Math.sin(a),ux=dx/d,uy=dy/d;
+      const k=Math.min(1,dt*(3.5+f.tm*3+(d<220?10*(1-d/220):0)));f.vx+=((ux*c-uy*s)*sp-f.vx)*k;f.vy+=((ux*s+uy*c)*sp-f.vy)*k;
+      if(f.tm>1.8){const w=Math.min(1,dt*4);f.x+=dx*w;f.y+=dy*w}}
+    f.x+=f.vx*dt;f.y+=f.vy*dt;
+    if(Math.hypot(f.vx,f.vy)>40)f.head=turn(f.head,Math.atan2(f.vy,f.vx),Math.min(1,dt*10));
+    if(f.mode==="home"&&d<90)f.head=turn(f.head,th,1-d/90);
+    if(f.mode==="home"&&d<12&&f.tm>.2)f.mode="done"}
   let seed=11;const rnd=()=>{seed=(seed+0x6d2b79f5)|0;let x=Math.imul(seed^(seed>>>15),1|seed);
     x=(x+Math.imul(x^(x>>>7),61|x))^x;return((x^(x>>>14))>>>0)/4294967296};
   function outline(){const f=rnd(),o=[];
@@ -385,21 +403,26 @@ const shards=(()=>{
     ctx.font="600 12px "+css("--mono");ctx.textBaseline="middle";
     hits=[];const INK=rgb(css("--ink")),SIG=rgb(css("--signal")),ON=rgb(css("--on-signal")),BG=rgb(css("--bg"));
     const PAPER=dark?[236,235,230]:[252,251,247],FOLD=dark?[150,149,142]:[196,195,188];
-    const count=Math.min(picks.length,W<520?4:8),span=W+260;
-    for(let i=0;i<count;i++){const pk=picks[i],tk=pk.tk;
+    const count=Math.min(picks.length,W<520?4:8),sec=dt/1000;span=W+260;
+    const order=[...Array(count).keys()].sort((p,q)=>!!fly[picks[p].tk]-!!fly[picks[q].tk]);   // airborne ones on top
+    for(const i of order){const pk=picks[i],tk=pk.tk;
       const v=W/(13+(i%4)*2.6),phase=(i*.381966)%1;                       // px per second, staggered
-      const x=((phase*span+t*v)%span)-130;
+      let x=((phase*span+t*v)%span)-130;
       const lane=H*(.14+.36*((i*.618034+.11)%1));
       const g1=Math.sin(t*.9+i*1.9),g2=Math.sin(t*2.1+i*.7),g3=Math.sin(t*.37+i);  // slow swell + gusts
-      const y=lane+H*.07*g1+H*.025*g2+H*.04*g3;
+      let y=lane+H*.07*g1+H*.025*g2+H*.04*g3;
       const dy=H*.07*.9*Math.cos(t*.9+i*1.9)+H*.025*2.1*Math.cos(t*2.1+i*.7)+H*.04*.37*Math.cos(t*.37+i);
-      const head=Math.atan2(dy,v),roll=.62+.38*Math.cos(t*1.4+i*2.3);     // bank into the gust, wings roll
-      const edge=Math.min(1,(x+130)/120,(W+130-x)/120),a=Math.max(0,edge)*intro;if(a<=.02)continue;
-      const lit=hot===tk,k=(lit?1.25:1)*(W<520?1.25:1.7);
+      let head=Math.atan2(dy,v),roll=.62+.38*Math.cos(t*1.4+i*2.3);     // bank into the gust, wings roll
+      let a=Math.max(0,Math.min(1,(x+130)/120,(W+130-x)/120))*intro;
+      const f=fly[tk];
+      if(f){steer(f,x,y,head,sec);if(f.mode==="done")delete fly[tk];else{x=f.x;y=f.y;head=f.head;a=intro;
+        roll=f.mode==="held"?1:.7+.3*Math.cos(now/110)}}
+      if(a<=.02)continue;
+      const up=!!fly[tk],lit=hot===tk||(grab&&grab.tk===tk),k=(lit?1.25:1)*(up?1.12:1)*(W<520?1.25:1.7);
       const P=(px,py)=>[x+(px*Math.cos(head)-py*roll*Math.sin(head))*k,y+(px*Math.sin(head)+py*roll*Math.cos(head))*k];
       const nose=P(17,0),tailL=P(-12,-11),tailR=P(-12,9),fold=P(-7,0),keel=P(-10,4.5);
       ctx.lineJoin="round";ctx.lineWidth=1;ctx.save();
-      ctx.shadowColor=dark?"rgba(0,0,0,.65)":"rgba(0,0,0,.18)";ctx.shadowBlur=10;ctx.shadowOffsetY=7;  // lift above the stream
+      ctx.shadowColor=dark?"rgba(0,0,0,.65)":"rgba(0,0,0,.18)";ctx.shadowBlur=up?18:10;ctx.shadowOffsetY=up?16:7;  // lift above the stream (higher when picked up)
       ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...tailL);ctx.lineTo(...fold);ctx.lineTo(...tailR);ctx.closePath();
       ctx.fillStyle=rgba(PAPER,a);ctx.fill();ctx.restore();
       ctx.beginPath();ctx.moveTo(...nose);ctx.lineTo(...tailL);ctx.lineTo(...fold);ctx.closePath();     // far wing
@@ -416,19 +439,37 @@ const shards=(()=>{
       ctx.fillStyle=rgba(lit?INK:buy?SIG:BG,a);ctx.fillRect(lx,ly-10,w,20);
       if(!buy&&!lit){ctx.strokeStyle=rgba(INK,a*.6);ctx.strokeRect(lx+.5,ly-9.5,w-1,19)}
       ctx.fillStyle=rgba(lit?BG:buy?ON:INK,a);ctx.fillText(lit?tk+" ↗":tk,lx+6,ly+.5);
-      hits.push({tk,x0:Math.min(lx,x-20)-6,y0:Math.min(ly-14,y-16),x1:Math.max(x+22,lx+w)+6,y1:Math.max(ly+14,y+16)})}
-    cv.style.cursor=hot?"pointer":"default";
+      hits.push({tk,px:x,py:y,head,x0:Math.min(lx,x-20)-6,y0:Math.min(ly-14,y-16),x1:Math.max(x+22,lx+w)+6,y1:Math.max(ly+14,y+16)})}
+    cv.style.cursor=grab&&grab.moved?"grabbing":hot?"grab":"default";
     if(!still&&on)raf=requestAnimationFrame(frame)}
   function start(){cancelAnimationFrame(raf);last=0;raf=requestAnimationFrame(frame)}
   function set(rows,tone,researched){const buys=rows.filter(r=>r.tier==="BUY"),watch=rows.filter(r=>r.tier==="WATCH");
     picks=buys.concat(watch).slice(0,8).map(r=>({tk:r.ticker,tier:r.tier}));
     speed=.007+Math.min(.012,Math.abs(tone||0)*.04);const n=Math.max(200,Math.min(380,(researched||100)*3));
     if(Math.abs(n-list.length)>20)build(n);if(still)frame(performance.now())}
-  const hitAt=(x,y)=>(hits.find(m=>x>=m.x0&&x<=m.x1&&y>=m.y0&&y<=m.y1)||{}).tk||null;
-  cv.addEventListener("pointermove",e=>{const r=cv.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;
-    over=true;hot=hitAt(mouse.x,mouse.y);if(still)frame(performance.now())});
-  cv.addEventListener("pointerleave",()=>{mouse.x=mouse.y=-1e4;over=false;hot=null});
-  cv.addEventListener("click",e=>{const r=cv.getBoundingClientRect(),tk=hitAt(e.clientX-r.left,e.clientY-r.top);if(tk)openT(tk)});
+  const hitOf=(x,y)=>{for(let j=hits.length-1;j>=0;j--){const m=hits[j];if(x>=m.x0&&x<=m.x1&&y>=m.y0&&y<=m.y1)return m}return null};
+  const hitAt=(x,y)=>(hitOf(x,y)||{}).tk||null;
+  const at=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+  // grab a plane and chuck it; a tap without dragging still opens the stock
+  cv.addEventListener("pointerdown",e=>{const[x,y]=at(e),m=hitOf(x,y);if(!m)return;
+    mouse.x=x;mouse.y=y;grab={tk:m.tk,id:e.pointerId,sx:x,sy:y,moved:false,pts:[[performance.now(),x,y]]};
+    try{cv.setPointerCapture(e.pointerId)}catch(_){}
+    if(!still){const f=fly[m.tk]||(fly[m.tk]={x:m.px,y:m.py,vx:0,vy:0,head:m.head,tm:0});f.mode="held";f.gx=f.x-x;f.gy=f.y-y}});
+  cv.addEventListener("pointermove",e=>{const[x,y]=at(e);mouse.x=x;mouse.y=y;over=true;
+    if(grab&&e.pointerId===grab.id){const n=performance.now();grab.pts.push([n,x,y]);while(grab.pts.length>2&&n-grab.pts[0][0]>90)grab.pts.shift();
+      if(Math.hypot(x-grab.sx,y-grab.sy)>6)grab.moved=true}
+    hot=grab?grab.tk:hitAt(x,y);if(still)frame(performance.now())});
+  function letGo(e,cancel){if(!grab||e.pointerId!==grab.id)return;const g=grab,f=fly[g.tk];grab=null;hot=null;
+    try{cv.releasePointerCapture(e.pointerId)}catch(_){}
+    if(f){f.tm=0;f.vx=f.vy=0;f.mode="home";f.curl=1;
+      const p=g.pts,a=p[0],b=p[p.length-1],ms=b[0]-a[0];
+      if(!cancel&&g.moved&&ms>8){let vx=(b[1]-a[1])/ms*1000,vy=(b[2]-a[2])/ms*1000;const s=Math.hypot(vx,vy),cap=4200;
+        if(s>cap){vx*=cap/s;vy*=cap/s}if(s>300){f.vx=vx;f.vy=vy;f.mode="thrown"}}}
+    if(!cancel&&!g.moved)openT(g.tk)}
+  cv.addEventListener("pointerup",e=>letGo(e,false));
+  cv.addEventListener("pointercancel",e=>letGo(e,true));
+  cv.addEventListener("touchstart",e=>{const t0=e.touches[0];if(t0&&hitAt(...at(t0)))e.preventDefault()},{passive:false});  // keep the page from scrolling while you hold a plane
+  cv.addEventListener("pointerleave",()=>{if(grab)return;mouse.x=mouse.y=-1e4;over=false;hot=null});
   addEventListener("resize",()=>{size();if(still)frame(performance.now())});
   new IntersectionObserver(([e])=>{on=e.isIntersecting&&!document.hidden;if(on&&!still)start()}).observe(cv);
   document.addEventListener("visibilitychange",()=>{on=!document.hidden;if(on&&!still)start()});
