@@ -3,7 +3,7 @@
 
 Pipeline (one call to run()):
   1. discover  two funnels
-               hunt: Yahoo screen of every US-listed $50M–$500B stock growing revenue 25%+ (fundamentals first)
+               hunt: Yahoo screen of every US-listed stock over $50M growing revenue 25%+ (fundamentals first)
                heat: names hot in news (Massive, Yahoo), on Reddit/X (scraper.py), small-cap gainers/actives
   2. gate      info for every candidate, then hard filters against pumps, dilution machines,
                pre-revenue story stocks, OTC/illiquid names and reverse splits (rejects are kept, with reasons)
@@ -80,7 +80,9 @@ _harden_yfinance_caches()
 
 env = os.environ.get
 MIN_MCAP = float(env("PULSE_MIN_MCAP", 5e7))
-MAX_MCAP = float(env("PULSE_MAX_MCAP", 5e11))
+MAX_MCAP = float(env("PULSE_MAX_MCAP", 1e14))     # no ceiling: the full universe is in play
+EARLY_CAP = 5e11  # where the "early" size score hits zero: everything bigger is already found
+HEAT_MEGA = int(env("PULSE_HEAT_MEGA", 8))         # hype slots a megacap may take; the rest go to smaller names
 MIN_PRICE = float(env("PULSE_MIN_PRICE", 1))
 MIN_DOLLAR_VOL = float(env("PULSE_MIN_DOLLAR_VOL", 1e6))
 MIN_REVENUE = float(env("PULSE_MIN_REVENUE", 1e7))
@@ -104,6 +106,7 @@ PR_WIRES = ("globenewswire", "globe newswire", "pr newswire", "prnewswire", "bus
 WEIGHTS = {"growth": 0.25, "quality": 0.18, "estimates": 0.12, "valuation": 0.08, "momentum": 0.17, "early": 0.20}
 BUY_AT, AVOID_BELOW, FLAG_COST = 70, 42, 7
 BIG_CAP, BIG_BUY_AT = 5e10, 75   # names everyone already knows have to earn a BUY
+MEGA_CAP, MEGA_BUY_AT = 5e11, 80  # and the giants have to earn it even harder
 # diamond in the rough: small, barely covered, growing fast, financially sound, nothing wrong with it
 DIAMOND_MAX_MCAP, DIAMOND_MAX_ANALYSTS, DIAMOND_MIN_SCORE = 3e9, 6, 60
 EARNINGS_BLACKOUT_D = 2
@@ -359,7 +362,7 @@ def social_mentions() -> tuple[dict, dict]:
 
 
 def hunt_screen() -> tuple[list[dict], int]:
-    """Every US-listed $50M–$500B stock growing quarterly revenue 25%+ with real liquidity."""
+    """Every US-listed stock over $50M growing quarterly revenue 25%+ with real liquidity."""
     q = EQ("and", [
         EQ("btwn", ["intradaymarketcap", MIN_MCAP, MAX_MCAP]),
         EQ("is-in", ["exchange", *SCREEN_EXCHANGES]),
@@ -367,17 +370,40 @@ def hunt_screen() -> tuple[list[dict], int]:
         EQ("gt", ["intradayprice", MIN_PRICE]),
         EQ("gt", ["quarterlyrevenuegrowth.quarterly", 25]),
     ])
-    rows, total = [], 0
+    rows, total, failed = [], 0, False
     for page in range(HUNT_PAGES):
-        try:
-            r = yf.screen(q, size=250, offset=page * 250, sortField="intradaymarketcap", sortAsc=True)
-        except Exception as e:
-            print(f"[hunt] screen page {page} failed: {e}")
+        r = None
+        for attempt in range(3):  # Yahoo's crumb goes stale now and then (401): drop it and ask again
+            try:
+                r = yf.screen(q, size=250, offset=page * 250, sortField="intradaymarketcap", sortAsc=True)
+                break
+            except Exception as e:
+                print(f"[hunt] screen page {page} failed ({attempt + 1}/3): {e}")
+                try:
+                    from yfinance.data import YfData
+                    YfData()._crumb = None
+                except Exception:
+                    pass
+                time.sleep(2 + 3 * attempt)
+        if r is None:
+            failed = True
             break
         total = r.get("total") or total
         rows += r.get("quotes", [])
         if len(rows) >= total:
             break
+    snap = CACHE / "hunt_screen.json"
+    if failed or not rows:  # one bad Yahoo moment shouldn't gut the run: fall back to the last good screen (<2 days)
+        try:
+            if time.time() - snap.stat().st_mtime < 48 * 3600:
+                old = json.loads(snap.read_text())
+                print(f"[hunt] using last good screen ({len(old['rows'])} rows)")
+                return old["rows"], old["total"]
+        except (OSError, ValueError, KeyError):
+            pass
+        return rows, total
+    CACHE.mkdir(exist_ok=True)
+    snap.write_text(json.dumps(clean({"rows": rows, "total": total})))
     return rows, total
 
 
@@ -396,7 +422,7 @@ def prerank(q: dict) -> float:
     s += 20 * max(0.0, min(1.0, (2.2 - ext) / 1.1))            # 1.1x → full, 2.2x+ → none
     if chg52 is not None:
         s += 15 if -10 <= chg52 <= 250 else 0                    # in a trend, not already a moonshot
-    s += 15 * max(0.0, min(1.0, (math.log10(MAX_MCAP) - math.log10(mcap)) / 2.3))  # smaller = more room
+    s += 15 * max(0.0, min(1.0, (math.log10(EARLY_CAP) - math.log10(mcap)) / 2.3))  # smaller = more room
     eps_t, eps_f = num(q.get("epsTrailingTwelveMonths")), num(q.get("epsForward"))
     s += 10 if eps_t is not None and eps_f is not None and eps_f > eps_t else 0  # earnings improving
     return s
@@ -724,7 +750,7 @@ METRICS = [
     ("off_high", "momentum", "From 52w high", pct, lambda v: lin(v, -0.50, 0.0)),
     ("above50", "momentum", "Above 50-day avg", lambda v: "yes" if v else "no", lambda v: v),
     ("above200", "momentum", "Above 200-day avg", lambda v: "yes" if v else "no", lambda v: v),
-    ("log_mcap", "early", "Market cap", lambda v: money(10 ** v), lambda v: lin(v, math.log10(MAX_MCAP), 8.0)),
+    ("log_mcap", "early", "Market cap", lambda v: money(10 ** v), lambda v: lin(v, math.log10(EARLY_CAP), 8.0)),
     ("analysts", "early", "Analyst coverage", lambda v: f"{v:.0f}", lambda v: lin(v, 20, 2)),
     ("inst_fit", "early", "Institutional ownership (sweet spot ~40%)", lambda v: f"±{v * 100:.0f}pt from 40%",
      lambda v: lin(v, 0.5, 0.0)),
@@ -745,7 +771,8 @@ def gate(sym, info, deep, p, sec, x, social, heads) -> list[str]:
     if (x["price"] or 0) < MIN_PRICE:
         r.append("Price under $1")
     if x["mcap"] and not MIN_MCAP <= x["mcap"] <= MAX_MCAP:
-        r.append(f"Market cap {money(x['mcap'])} outside {money(MIN_MCAP)}–{money(MAX_MCAP)}")
+        r.append(f"Market cap {money(x['mcap'])} under {money(MIN_MCAP)}" if x["mcap"] < MIN_MCAP
+                 else f"Market cap {money(x['mcap'])} over {money(MAX_MCAP)}")
     if (x["dollar_vol"] or 0) < MIN_DOLLAR_VOL:
         r.append(f"Illiquid (<{money(MIN_DOLLAR_VOL)}/day traded)")
     if (x["revenue"] or 0) < MIN_REVENUE and info.get("sector") not in FINANCIAL_SECTORS:
@@ -792,6 +819,11 @@ def red_flags(x, sec, social, heads, sector) -> list[str]:
     return fl
 
 
+def buy_bar(mcap) -> float:
+    mcap = mcap or 0
+    return MEGA_BUY_AT if mcap > MEGA_CAP else BIG_BUY_AT if mcap > BIG_CAP else BUY_AT
+
+
 def score(sym, info, deep, p, sec, social, heads) -> dict:
     x = features(info, deep, p)
     sector = info.get("sector")
@@ -834,7 +866,7 @@ def score(sym, info, deep, p, sec, social, heads) -> dict:
 
     if len(flags) >= 2 or composite < AVOID_BELOW:
         tier = "AVOID"
-    elif composite >= (BIG_BUY_AT if (x["mcap"] or 0) > BIG_CAP else BUY_AT) and not flags and coverage >= 0.6:
+    elif composite >= buy_bar(x["mcap"]) and not flags and coverage >= 0.6:
         tier = "BUY"
         if days_to_er is not None and 0 <= days_to_er <= EARNINGS_BLACKOUT_D:
             tier = "WATCH"
@@ -842,7 +874,7 @@ def score(sym, info, deep, p, sec, social, heads) -> dict:
     else:
         tier = "WATCH"
     if tier == "WATCH" and (x["mcap"] or 0) > BIG_CAP and composite >= BUY_AT and not flags:
-        cautions.insert(0, f"Big name: needs {BIG_BUY_AT} to be a BUY")
+        cautions.insert(0, f"{'Megacap' if (x['mcap'] or 0) > MEGA_CAP else 'Big name'}: needs {buy_bar(x['mcap'])} to be a BUY")
 
     diamond = (tier != "AVOID" and not flags and composite >= DIAMOND_MIN_SCORE
                and (x["mcap"] or 1e15) <= DIAMOND_MAX_MCAP and x["analysts"] <= DIAMOND_MAX_ANALYSTS
@@ -956,10 +988,19 @@ def run(verbose: bool = True) -> dict:
     with cf.ThreadPoolExecutor(WORKERS) as ex:
         infos = dict(zip(cands, ex.map(fetch_info, cands)))
     in_band = lambda i: i and i.get("quoteType") == "EQUITY" and MIN_MCAP <= (num(i.get("marketCap")) or 0) <= MAX_MCAP
-    heat_keep = [s for s in heat_syms if in_band(infos.get(s))][:HEAT_DEEP]
+    heat_keep, megas = [], 0
+    for s in heat_syms:  # hype picks what gets looked at, but megacaps only get a few of the slots
+        i = infos.get(s)
+        if not in_band(i) or len(heat_keep) >= HEAT_DEEP:
+            continue
+        if (num(i.get("marketCap")) or 0) > EARLY_CAP:
+            if megas >= HEAT_MEGA:
+                continue
+            megas += 1
+        heat_keep.append(s)
     universe = list(dict.fromkeys([s for s in hunt_syms if in_band(infos.get(s))] + heat_keep))
-    log(f"[gate] {len(universe)} in the ${MIN_MCAP / 1e6:.0f}M–${MAX_MCAP / 1e9:.0f}B band "
-        f"({len(heat_syms)} hot names checked, megacaps dropped)")
+    log(f"[gate] {len(universe)} over ${MIN_MCAP / 1e6:.0f}M "
+        f"({len(heat_syms)} hot names checked, {megas} megacap slots used)")
 
     # stage 2: research
     with cf.ThreadPoolExecutor(WORKERS) as ex:

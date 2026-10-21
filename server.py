@@ -18,6 +18,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ranker
+import watchlist
 
 PORT = int(os.environ.get("PULSE_PORT", 8790))
 INTERVAL_MIN = float(os.environ.get("PULSE_INTERVAL_MIN", 60))
@@ -36,6 +37,10 @@ def prewarm() -> None:
     try:
         syms = [r["ticker"] for r in json.loads(ranker.OUT.read_text()).get("results", [])]
         ranker.prewarm(syms)
+        ranked = set(syms)
+        for s in watchlist.tickers():  # watched names that fell out of the ranking still get a fresh rating
+            if s not in ranked:
+                ranker.stock(s, force=True)
     except Exception:
         traceback.print_exc()
     finally:
@@ -109,6 +114,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(ranker.clean(data)).encode())
             except Exception as e:
                 self._send(502, json.dumps({"error": f"{type(e).__name__}: {e}"}).encode())
+        elif path == "/api/watchlist":
+            self._send(200, json.dumps(ranker.clean(watchlist.view())).encode())
         elif path == "/api/status":
             self._send(200, json.dumps({**state, "interval_min": INTERVAL_MIN}).encode())
         else:
@@ -120,6 +127,17 @@ class Handler(BaseHTTPRequestHandler):
             if started:
                 wake.set()
             self._send(202, json.dumps({"started": started, "running": True}).encode())
+        elif self.path.split("?", 1)[0] == "/api/watchlist":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                if not 0 < n <= 4096:
+                    raise ValueError("bad body")
+                body = json.loads(self.rfile.read(n))
+                if not isinstance(body, dict):
+                    raise ValueError("bad body")
+                self._send(200, json.dumps(ranker.clean(watchlist.act(body))).encode())
+            except ValueError as e:
+                self._send(400, json.dumps({"error": str(e)}).encode())
         else:
             self._send(404, b'{"error":"not found"}')
 

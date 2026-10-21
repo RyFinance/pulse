@@ -219,6 +219,49 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 .comps tr.self td{background:color-mix(in srgb,var(--signal) 12%,transparent)}
 .comps tr[data-c]{cursor:pointer}.comps tr[data-c]:hover td{background:var(--panel)}
 .comps .tag{font-size:10px;padding:1px 5px;margin-left:4px}
+/* watchlist */
+.wtab{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);display:inline-flex;gap:7px;align-items:center}
+.wtab b{font-family:var(--mono);font-weight:600;background:var(--signal);color:var(--on-signal);padding:1px 6px;letter-spacing:0}
+.wtab:hover{color:var(--ink)}
+.wfold{border-bottom:1px solid var(--line)}
+.wfh{display:flex;align-items:center;gap:12px;padding:12px 4px;cursor:pointer;user-select:none}
+.wfh:hover{background:var(--panel)}
+.wfh .car{font-family:var(--mono);width:14px;color:var(--mute);transition:transform .15s}
+.wfold.shut .car{transform:rotate(-90deg)}
+.wfh .nm{font-weight:700;font-size:14px;letter-spacing:.04em}
+.wfh .ct{font:12px var(--mono);color:var(--mute)}
+.wfh .sum{margin-left:auto;font:12.5px var(--mono);color:var(--ink-2);white-space:nowrap}
+.wfh .ic{font:12px var(--mono);color:var(--mute);border:1px solid transparent;padding:2px 7px}
+.wfh .ic:hover{color:var(--ink);border-color:var(--line-2)}
+.wfold.shut .wrows{display:none}
+.wrow{display:grid;grid-template-columns:76px minmax(0,1.3fr) 84px 70px minmax(150px,1fr) minmax(170px,1fr) 30px;gap:12px;align-items:center;
+  padding:9px 4px 9px 30px;border-top:1px solid var(--line);font-size:13.5px;cursor:pointer;white-space:nowrap}
+.wrow:hover{background:var(--panel)}
+.wrow .tk{font:700 14px var(--mono)}
+.wrow .nm{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
+.wrow .n{font-family:var(--mono);text-align:right}
+.wrow .since{font-family:var(--mono);text-align:right}.wrow .since small,.wrow .rate small{color:var(--mute);font-size:11.5px;margin-left:6px}
+.wrow .rate{font-family:var(--mono);text-align:right}
+.wrow .rm{color:var(--mute);font-size:13px;width:26px;height:26px}.wrow .rm:hover{color:var(--down)}
+.wbar{display:flex;gap:8px;align-items:center;margin:-4px 0 12px;flex-wrap:wrap}
+.wbar .pill{cursor:pointer}
+.whead{display:grid;grid-template-columns:76px minmax(0,1.3fr) 84px 70px minmax(150px,1fr) minmax(170px,1fr) 30px;gap:12px;padding:0 4px 8px 30px;
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line-2)}
+.whead span:nth-child(n+3){text-align:right}
+.wl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;font-size:14px}
+.wl .add{border:1px solid var(--ink);padding:6px 12px;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.wl .add.on{background:var(--signal);color:var(--on-signal);border-color:var(--signal)}
+.wl select{font:13px var(--sans);color:var(--ink);background:var(--bg);border:1px solid var(--line-2);padding:5px 8px}
+.wl .rmv{font-size:12.5px;color:var(--mute);text-decoration:underline}.wl .rmv:hover{color:var(--down)}
+.since-box{border:1px solid var(--line-2);border-left:3px solid var(--signal-bar);margin-top:22px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.since-box>div{padding:12px 16px;border-right:1px solid var(--line)}.since-box>div:last-child{border-right:0}
+.since-box .v{font:600 24px/1.2 var(--sans);letter-spacing:-.01em;margin-top:4px;white-space:nowrap}
+.since-box .s{font:12.5px var(--mono);color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){
+  .wrow,.whead{grid-template-columns:62px 70px minmax(0,1fr) minmax(0,1fr) 26px;padding-left:10px;gap:8px}
+  .wrow .nm,.whead .nm,.wrow .day,.whead .day{display:none}
+  .wfh .sum{display:none}.since-box{grid-template-columns:1fr}.since-box>div{border-right:0;border-bottom:1px solid var(--line)}
+}
 </style>
 </head>
 <body>
@@ -227,6 +270,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 <header class="top">
   <div class="brand"><span class="dot" id="dot"></span>PULSE<span class="idx">03 · HUNTING SMALL, NICHE LEADERS</span></div>
   <div class="right">
+    <button class="wtab" id="wtab" title="Jump to your watchlist">Watchlist <b id="wtabN">0</b></button>
     <span class="status" id="status">—</span>
     <button class="btn" id="run">Run</button>
     <button class="theme" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
@@ -282,6 +326,12 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
       <input class="search" id="q" placeholder="ticker, name, industry…" autocomplete="off">
     </div>
     <div class="tw"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+  </section>
+
+  <section id="watch">
+    <div class="sh"><h2>Watchlist</h2><span class="aside" id="wlN">since added · rating then → now</span></div>
+    <div class="wbar"><button class="pill" id="wlNew">+ folder</button><span class="dim" style="font-size:12.5px">open any stock and hit ☆ Watch to add it · click a row to open it</span></div>
+    <div id="wlBody"><div class="empty">Loading…</div></div>
   </section>
 
   <div class="foot">
@@ -367,7 +417,8 @@ const shards=(()=>{
   const rgb=h=>{h=h.replace("#","");const n=parseInt(h.length===3?h.replace(/./g,c=>c+c):h,16);return[(n>>16)&255,(n>>8)&255,n&255]};
   const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0,Math.min(1,a)).toFixed(3)})`;
   function frame(now){
-    if(!W)size();const dt=last?Math.min(50,now-last):16;last=now;pace+=((over?.22:1)-pace)*.06;if(!still)t+=dt/1000*pace;
+    if(!W||!H)size();if(!W||!H||!far.width||!far.height){if(!still&&on)raf=requestAnimationFrame(frame);return}  // hidden/resizing: nothing to draw yet
+    const dt=last?Math.min(50,now-last):16;last=now;pace+=((over?.22:1)-pace)*.06;if(!still)t+=dt/1000*pace;
     const intro=still?1:Math.min(1,(now-born)/2600),dark=css("--bg").startsWith("#0");
     const S=rgb(css("--shard")),E=rgb(css("--shard-edge")),G=rgb(css("--shard-glint")),M=rgb(css("--mute"));
     ctx.clearRect(0,0,W,H);fx2.clearRect(0,0,W,H);
@@ -539,7 +590,7 @@ function renderRead(){
     stat("VIX",vix.price==null?"—":vix.price.toFixed(1),vix.r5d==null?"":"5D "+(vix.r5d>=0?"+":"")+(vix.r5d*100).toFixed(0)+"%"),
     stat("News tone",toneWord(S.news_tone),`${S.news_tone==null?"—":S.news_tone.toFixed(2)} · ${S.news_items||0} headlines`),
     stat("Social tone",toneWord(so.tone),so.posts?`${so.tone.toFixed(2)} · ${so.posts.toLocaleString()} posts · ${ago(so.scraped_at)}`:"no scrape"),
-    stat("Screened",(S.hunt_total||0).toLocaleString(),`${cap((D.config||{}).min_mcap)}–${cap((D.config||{}).max_mcap)}, revenue +25%`),
+    stat("Screened",(S.hunt_total||0).toLocaleString(),`${cap((D.config||{}).min_mcap)}+ · revenue +25%`),
     stat("Researched",S.researched??"—",`${D.universe||0} passed every filter`),
     stat("Filtered out",S.rejected??"—","pump · dilution · liquidity"),
   ].join("");
@@ -765,8 +816,10 @@ function showT(r){OPENING=r.ticker;
     <div class="lbl">${r.offlist?"not in today's ranking · competitor lookup":`#${r.rank} · found via ${esc(src||"—")}`} · ${esc(r.sector||"")}</div>
     <div class="tk" style="margin-top:8px">${esc(r.ticker)} <span class="score ${r.tier}">${r.tier} ${r.score.toFixed(0)}</span></div>
     <div class="sub">${esc(r.name)} · ${esc(r.industry||"")} · ${cap(r.market_cap)} · $${fx(r.price,2)}${r.website?` · <a href="${esc(r.website)}" target="_blank" rel="noopener noreferrer">site ↗</a>`:""}</div>
+    <div class="wl" id="wlBox" data-tk="${esc(r.ticker)}"></div>
   </div>
   <div class="db">
+    <div id="sinceBox"></div>
     ${chartHTML(r.ticker)}
     ${r.about?`<h3>What they do</h3><p class="about">${esc(r.about)}${r.about.length>=420?"…":""}</p>`:""}
     <h3>Pillars</h3>${pil}
@@ -800,9 +853,77 @@ function showT(r){OPENING=r.ticker;
   </div>`;
   $("#drawer").classList.add("open");$("#scrim").classList.add("open");$("#drawer").scrollTop=0;$("#close").onclick=closeT;
   $("#drawer").querySelectorAll(".rg").forEach(b=>b.onclick=()=>loadChart(r.ticker,b.dataset.r));
-  requestAnimationFrame(()=>loadChart(r.ticker,RANGE));loadComps(r.ticker);
+  renderWlBox();requestAnimationFrame(()=>loadChart(r.ticker,RANGE));loadComps(r.ticker);
 }
 function closeT(){$("#drawer").classList.remove("open");$("#scrim").classList.remove("open")}
+
+/* ---------- watchlist ----------
+   folders of one-line rows; each stock remembers the day, price and rating it was added at */
+let WL={folders:[],items:[]};
+const SHUT=new Set((()=>{try{return JSON.parse(localStorage.getItem("pulse-wl-shut")||"[]")}catch{return[]}})());
+let WL_LAST=(()=>{try{return localStorage.getItem("pulse-wl-folder")}catch{return null}})();
+const day=iso=>new Date(iso).toLocaleDateString(undefined,{month:"short",day:"numeric",year:new Date(iso).getFullYear()===new Date().getFullYear()?undefined:"numeric"});
+const held=d=>d==null?"":d<1?"today":d===1?"1d":d<60?d+"d":Math.round(d/30.4)+"mo";
+const dScore=v=>v==null?"":`<span class="${v>0.05?"up":v<-0.05?"down":"dim"}">${v>0.05?"▲":v<-0.05?"▼":"·"}${Math.abs(v).toFixed(1)}</span>`;
+async function wlLoad(){try{WL=await (await fetch("/api/watchlist",{cache:"no-store"})).json();renderWL();renderWlBox()}catch{}}
+async function wlDo(body){
+  const res=await fetch("/api/watchlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const x=await res.json();if(x.error){alert(x.error);return}WL=x;renderWL();renderWlBox()}
+const wlItem=t=>WL.items.find(i=>i.ticker===t);
+function renderWL(){
+  const n=WL.items.length;$("#wtabN").textContent=n;
+  $("#wlN").textContent=n?`${n} watched · ${WL.folders.length} folder${WL.folders.length>1?"s":""} · since added · rating then → now`:"since added · rating then → now";
+  const folders=[...WL.folders,...new Set(WL.items.map(i=>i.folder).filter(f=>!WL.folders.includes(f)))];
+  if(!n&&folders.length<=1){$("#wlBody").innerHTML='<div class="empty">Nothing watched yet. Open any stock (a card, a table row, a plane) and hit ☆ Watch — it starts tracking how it moves and how its rating changes from that day.</div>';return}
+  const head=`<div class="whead"><span>Ticker</span><span class="nm">Name</span><span>Price</span><span class="day">1D</span><span>Since added</span><span>Rating then → now</span><span></span></div>`;
+  $("#wlBody").innerHTML=folders.map(f=>{
+    const rows=WL.items.filter(i=>i.folder===f),sp=rows.map(i=>i.since_pct).filter(v=>v!=null);
+    const avg=sp.length?sp.reduce((a,b)=>a+b,0)/sp.length:null,best=rows.filter(i=>i.since_pct!=null).sort((a,b)=>b.since_pct-a.since_pct)[0];
+    return`<div class="wfold${SHUT.has(f)?" shut":""}" data-f="${esc(f)}">
+      <div class="wfh" data-fold="${esc(f)}"><span class="car">▾</span><span class="nm">${esc(f)}</span><span class="ct">${rows.length}</span>
+        <span class="sum">${avg==null?"":`avg since added ${pct(avg,1)}`}${best?` · best ${esc(best.ticker)} ${pct(best.since_pct,1)}`:""}</span>
+        <button class="ic" data-ren="${esc(f)}" title="Rename folder">rename</button>${folders.length>1?`<button class="ic" data-del="${esc(f)}" title="Delete folder">✕</button>`:""}</div>
+      <div class="wrows">${rows.length?head+rows.map(wlRow).join(""):'<div class="empty" style="padding:14px 30px">Empty folder.</div>'}</div></div>`}).join("")}
+function wlRow(i){
+  const then=i.added_score==null?"—":`${i.added_score.toFixed(0)}<small>${esc(i.added_tier||"")}</small>`;
+  const now=i.score==null?'<span class="dim">scoring…</span>':`<span class="tier ${i.tier}">${i.score.toFixed(0)}</span>`;
+  return`<div class="wrow" data-t="${esc(i.ticker)}" title="Added ${day(i.added_at)} at ${money(i.added_price)}">
+    <span class="tk">${esc(i.ticker)}</span><span class="nm">${esc(i.name||"")}</span>
+    <span class="n">${money(i.price)}</span><span class="n day">${pct(i.day_pct,1)}</span>
+    <span class="since">${pct(i.since_pct,1)}<small>${day(i.added_at)} · ${held(i.days)}</small></span>
+    <span class="rate">${then} → ${now} ${dScore(i.score_delta)}</span>
+    <button class="rm" data-rm="${esc(i.ticker)}" title="Remove from watchlist">✕</button></div>`}
+function folderPick(sel){
+  const fs=WL.folders.length?WL.folders:["Watching"];
+  return`<select id="wlSel" aria-label="Folder">${fs.map(f=>`<option ${f===sel?"selected":""}>${esc(f)}</option>`).join("")}<option value="__new">+ New folder…</option></select>`}
+function renderWlBox(){
+  const box=$("#wlBox");if(!box)return;const t=box.dataset.tk,it=wlItem(t);
+  if(it){
+    box.innerHTML=`<button class="add on" data-wl="off" title="Watching">★ Watching</button><span class="dim">in</span>${folderPick(it.folder)}<button class="rmv" data-wl="rm">remove</button>`;
+    $("#sinceBox").innerHTML=`<div class="since-box">
+      <div><div class="lbl">Since added</div><div class="v">${pct(it.since_pct,1)}</div><div class="s">${money(it.added_price)} → ${money(it.price)}</div></div>
+      <div><div class="lbl">Added</div><div class="v">${day(it.added_at)}</div><div class="s">${it.days<1?"today":held(it.days)+" ago"} · in ${esc(it.folder)}</div></div>
+      <div><div class="lbl">Rating then → now</div><div class="v">${it.added_score==null?"—":it.added_score.toFixed(0)} → ${it.score==null?"…":it.score.toFixed(0)} ${dScore(it.score_delta)}</div><div class="s">${esc(it.added_tier||"—")} → ${esc(it.tier||"—")}</div></div></div>`;
+  }else{
+    const pick=WL.folders.includes(WL_LAST)?WL_LAST:WL.folders[0];
+    box.innerHTML=`<button class="add" data-wl="add">☆ Watch</button><span class="dim">into</span>${folderPick(pick)}`;
+    const sb=$("#sinceBox");if(sb)sb.innerHTML="";
+  }
+  $("#wlSel").onchange=async e=>{let f=e.target.value;
+    if(f==="__new"){f=(prompt("New folder name")||"").trim();if(!f){renderWlBox();return}}
+    WL_LAST=f;try{localStorage.setItem("pulse-wl-folder",f)}catch{}
+    if(wlItem(t))await wlDo({op:"move",ticker:t,folder:f});else if(!WL.folders.includes(f))await wlDo({op:"folder_add",name:f});else renderWlBox()};
+  box.onclick=async e=>{const b=e.target.closest("[data-wl]");if(!b)return;
+    if(b.dataset.wl==="add"){b.disabled=true;b.textContent="adding…";await wlDo({op:"add",ticker:t,folder:$("#wlSel").value==="__new"?WL.folders[0]:$("#wlSel").value})}
+    else await wlDo({op:"remove",ticker:t})}}
+$("#wlBody").addEventListener("click",async e=>{
+  const rm=e.target.closest("[data-rm]");if(rm){e.stopPropagation();await wlDo({op:"remove",ticker:rm.dataset.rm});return}
+  const ren=e.target.closest("[data-ren]");if(ren){e.stopPropagation();const to=(prompt("Rename folder",ren.dataset.ren)||"").trim();if(to&&to!==ren.dataset.ren)await wlDo({op:"folder_rename",name:ren.dataset.ren,to});return}
+  const del=e.target.closest("[data-del]");if(del){e.stopPropagation();if(confirm(`Delete folder "${del.dataset.del}"? Its stocks move to "${WL.folders.find(f=>f!==del.dataset.del)}".`))await wlDo({op:"folder_remove",name:del.dataset.del});return}
+  const fh=e.target.closest("[data-fold]");if(fh){const f=fh.dataset.fold;SHUT.has(f)?SHUT.delete(f):SHUT.add(f);
+    try{localStorage.setItem("pulse-wl-shut",JSON.stringify([...SHUT]))}catch{}fh.parentElement.classList.toggle("shut")}},true);
+$("#wlNew").onclick=async()=>{const f=(prompt("New folder name")||"").trim();if(f)await wlDo({op:"folder_add",name:f})};
+$("#wtab").onclick=()=>$("#watch").scrollIntoView({behavior:"smooth",block:"start"});
 
 /* ---------- data ---------- */
 function renderAll(){renderRead();renderSectorBar();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results,(D.summary||{}).news_tone,(D.summary||{}).researched)}
@@ -832,7 +953,7 @@ document.addEventListener("click",e=>{
   const el=e.target.closest("[data-t]");if(el&&!e.target.closest("#drawer"))openT(el.dataset.t)});
 addEventListener("resize",()=>{const c=$("#chart");if(c&&$("#drawer").classList.contains("open")){const k=c.dataset.t+"|"+RANGE;if(chartCache[k])drawChart(chartCache[k])}});
 $("#scrim").onclick=closeT;document.addEventListener("keydown",e=>{if(e.key==="Escape")closeT()});
-load();poll();setInterval(poll,15000);
+load();poll();setInterval(poll,15000);wlLoad();setInterval(wlLoad,60000);
 </script>
 </body>
 </html>

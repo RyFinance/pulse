@@ -9,3 +9,5 @@ history/
 __pycache__/
 *.pyc
 .DS_Store
+watchlist.json
+watchlist.tmp

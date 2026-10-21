@@ -4,7 +4,7 @@
 
 <p align="center">
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-0a0a0a?style=flat-square&labelColor=0a0a0a&color=96aaff">
-  <img alt="universe" src="https://img.shields.io/badge/universe-US%20%2450M%E2%80%93%24500B-0a0a0a?style=flat-square&labelColor=0a0a0a&color=e9e9e9">
+  <img alt="universe" src="https://img.shields.io/badge/universe-every%20US%20stock%20%3E%2450M-0a0a0a?style=flat-square&labelColor=0a0a0a&color=e9e9e9">
   <img alt="refresh" src="https://img.shields.io/badge/re--ranks-every%2060%20min-0a0a0a?style=flat-square&labelColor=0a0a0a&color=9be7c4">
   <img alt="anti-pump" src="https://img.shields.io/badge/anti--pump-gated-0a0a0a?style=flat-square&labelColor=0a0a0a&color=8a8a8a">
 </p>
@@ -17,11 +17,11 @@ Not "MU has crazy revenue." The point is finding the next one while it's $500M, 
 ## How it hunts
 
 ```
-hunt      Yahoo screen: every US-listed $50M–$500B stock with quarterly revenue +25%,
+hunt      Yahoo screen: every US-listed stock over $50M with quarterly revenue +25%,
           pre-ranked on trend, extension, size and improving EPS → top 70 researched
           (50 under $10B, 20 proven names above)
 heat      names hot in news (Massive, Yahoo), Reddit/X cashtags (scraper.py), small-cap gainers
-          → in-band names only (megacaps dropped) → top 50 researched
+          → top 50 researched, at most 8 of them megacaps (> $500B) so hype can't crowd out the gems
 gate      hard rejects: OTC, < $1, < $1M/day traded, < $10M revenue, shares +30%/yr, reverse split
           (18m), < 4 quarters of cash, pump pattern (+80%/5d on 5x volume with thin fundamentals),
           SEC delisting notice / late filing
@@ -38,7 +38,8 @@ read      news + social tone (VADER), IWM/SPY/QQQ/VIX backdrop, sector heat, wri
 | Momentum | 17% | 3m/6m vs SPY, 1m, off 52w high, above 50/200d |
 | Early | 20% | smaller cap, few analysts, institutions near 40% (not crowded), not extended, 1y not parabolic |
 
-BUY needs 70 (75 for names over $50B — the ones everyone already knows have to earn it).
+BUY needs 70 (75 over $50B, 80 over $500B — the names everyone already knows have to earn it).
+No size ceiling: megacaps can be ranked, but the Early pillar scores anything over $500B as zero on size.
 **◆ Diamonds in the rough**: under $3B, ≤ 6 analysts, growth pillar ≥ 65, quality ≥ 50, score ≥ 60, no red flags.
 
 Red flags (−7 each, 2+ = AVOID): dilution > 15%, recent offering/shelf (SEC), short float > 25%, +50% in 5d,
@@ -52,6 +53,9 @@ News and social volume decide what gets looked at and feed the pump checks. They
   click to pin a date and see the move from there to any point (or to now).
 - **Competitors** — the 3 closest US-listed peers by size in the same sub-industry (Finnhub peers), scored with the
   same Pulse model, with a verdict on which is strongest and why.
+- **Watchlist** — hit ☆ Watch on any stock to file it into a folder. Each one remembers the day, price and rating
+  it was added at, so the watchlist shows what only it can: % since added and rating then → now (with the change),
+  next to price and the day's move. One line per stock, folders collapse, click a row to open it.
 
 ## What's in the repo
 
@@ -59,7 +63,8 @@ News and social volume decide what gets looked at and feed the pump checks. They
 |---|---|
 | `ranker.py` | discover → gate → research → score → `rankings.json` |
 | `server.py` | dashboard on :8790, re-ranks every 60 min |
-| `dashboard.html` | the UI: aero-shards hero with paper-airplane picks, sector filter, Apple-style price chart (1D–10Y, click to pin a date and measure from it), competitor check |
+| `watchlist.py` | watchlist folders and since-added stats → `watchlist.json` (gitignored) |
+| `dashboard.html` | the UI: aero-shards hero with paper-airplane picks, sector filter, Apple-style price chart (1D–10Y, click to pin a date and measure from it), competitor check, watchlist |
 | `scraper.py` | Reddit (rdt-cli) + X (headless Chrome) → `raw_data.json`, ~13s |
 | `save_x_session.py` | log in to X once; saves `x_session.json` (gitignored) |
 | `valid_tickers.txt` | listed US tickers used to validate cashtags |
