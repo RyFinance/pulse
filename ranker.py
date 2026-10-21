@@ -39,6 +39,45 @@ OUT = ROOT / "rankings.json"
 HIST = ROOT / "history"
 CACHE = ROOT / "cache"
 
+
+# yfinance keeps its timezone map and its Yahoo cookies in peewee/SQLite singletons
+# that live for the life of the process. Once one of those handles fails to open it
+# stays broken, and every download afterwards dies with OperationalError('unable to
+# open database file') or 'no such table: _kv'. yfinance only catches its own
+# exception type, so widen it here: a dead cache must degrade to a no-op instead of
+# taking the whole run down with it.
+def _harden_yfinance_caches() -> None:
+    try:
+        from yfinance import cache as _cache
+        for cls in (_cache._TzCache, _cache._CookieCache):
+            original = cls.initialise
+
+            def guarded(self, _original=original):
+                try:
+                    _original(self)
+                except Exception:
+                    self.dummy = True
+                    self.initialised = 0
+
+            cls.initialise = guarded
+    except Exception:
+        pass
+
+
+def _use_private_yf_cache() -> None:
+    """Our own cache dir: no cross-process contention with other yfinance users on
+    this box, and one directory to wipe if the handles ever wedge again."""
+    try:
+        d = ROOT / ".yfcache"
+        d.mkdir(parents=True, exist_ok=True)
+        yf.set_tz_cache_location(str(d))  # sets both the tz map and the cookie jar
+    except Exception:
+        pass
+
+
+_use_private_yf_cache()
+_harden_yfinance_caches()
+
 env = os.environ.get
 MIN_MCAP = float(env("PULSE_MIN_MCAP", 5e7))
 MAX_MCAP = float(env("PULSE_MAX_MCAP", 5e11))
@@ -494,13 +533,26 @@ _dl_lock = threading.Lock()  # yf.download keeps shared module state; concurrent
 
 
 def performance(syms: list[str]) -> dict[str, dict]:
+    """Prices for every symbol. A failure here is fatal to the run on purpose: an
+    empty price map used to be swallowed, and the dashboard then proudly showed
+    'nothing clears the bar' as if that were a finding, when in fact it had no
+    data at all. Better a failed run and a stale-but-real dashboard."""
+    px, last = None, None
+    for attempt in range(3):
+        try:
+            with _dl_lock:
+                px = yf.download(syms, period="2y", auto_adjust=True, actions=True, progress=False, threads=8)
+            break
+        except Exception as e:
+            last = e
+            print(f"[perform] download failed (try {attempt + 1}/3): {e}", flush=True)
+            time.sleep(3 * (attempt + 1))
+    if px is None:
+        raise RuntimeError(f"price download failed after 3 attempts: {last}") from last
     try:
-        with _dl_lock:
-            px = yf.download(syms, period="2y", auto_adjust=True, actions=True, progress=False, threads=8)
+        close, vol, splits = px["Close"], px["Volume"], px.get("Stock Splits")
     except Exception as e:
-        print(f"[perform] download failed: {e}")
-        return {}
-    close, vol, splits = px["Close"], px["Volume"], px.get("Stock Splits")
+        raise RuntimeError(f"price data unusable: {e}") from e
 
     def ret(s, n):
         s = s.dropna()

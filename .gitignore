@@ -4,6 +4,7 @@ raw_data.json
 rankings.json
 rankings.tmp
 cache/
+.yfcache/
 history/
 __pycache__/
 *.pyc
