@@ -219,6 +219,19 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 .comps tr.self td{background:color-mix(in srgb,var(--signal) 12%,transparent)}
 .comps tr[data-c]{cursor:pointer}.comps tr[data-c]:hover td{background:var(--panel)}
 .comps .tag{font-size:10px;padding:1px 5px;margin-left:4px}
+/* cap bands */
+.bandbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line-2);margin:-2px 0 14px}
+.band{text-align:left;padding:10px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.band:last-child{border-right:0}
+.band .bn{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.band .bs{font:12px var(--mono);color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.band:hover{background:var(--panel)}
+.band.on{background:var(--ink);color:var(--bg)}.band.on .bs{color:var(--signal)}
+.bgroup{margin-top:22px}.bgroup:first-child{margin-top:0}
+.bgh{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.bgh b{font-size:12px;letter-spacing:.14em;text-transform:uppercase}.bgh span{font:12px var(--mono);color:var(--mute)}
+.tag.ext{background:var(--ink);color:var(--signal);border-color:var(--ink);font-weight:700}
+@media (max-width:640px){.bandbar{grid-template-columns:1fr 1fr}.band:nth-child(2){border-right:0}.band:nth-child(-n+2){border-bottom:1px solid var(--line)}}
 /* watchlist */
 .wtab{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);display:inline-flex;gap:7px;align-items:center}
 .wtab b{font-family:var(--mono);font-weight:600;background:var(--signal);color:var(--on-signal);padding:1px 6px;letter-spacing:0}
@@ -260,6 +273,8 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 @media (max-width:760px){
   .wrow,.whead{grid-template-columns:62px 70px minmax(0,1fr) minmax(0,1fr) 26px;padding-left:10px;gap:8px}
   .wrow .nm,.whead .nm,.wrow .day,.whead .day{display:none}
+  .wrow>span{overflow:hidden;text-overflow:ellipsis}.wrow .rate small{display:none}
+  .wrow .since small{display:block;margin:0;line-height:1.2}
   .wfh .sum{display:none}.since-box{grid-template-columns:1fr}.since-box>div{border-right:0;border-bottom:1px solid var(--line)}
 }
 </style>
@@ -296,6 +311,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 
   <section>
     <div class="sh"><h2>Best setups</h2><span class="aside" id="buyN">—</span></div>
+    <div class="bandbar" id="bandBar"></div>
     <div class="secbar" id="secBar"></div>
     <div class="cards" id="cards"><div class="empty">Loading…</div></div>
   </section>
@@ -599,7 +615,7 @@ function renderRead(){
 }
 function bars(p){return`<div class="bars">${PIL.map(([k,l])=>{const s=p[k];return`<div class="bar"><div class="t"><span>${l}</span><b>${s==null?"–":Math.round(s)}</b></div><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div></div>`}).join("")}</div>`}
 function card(r){
-  const tags=[r.diamond?'<span class="tag gem">◆ diamond</span>':"",r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
+  const tags=[extraordinary(r)?'<span class="tag ext">megacap · extraordinary</span>':"",r.diamond?'<span class="tag gem">◆ diamond</span>':"",r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
     ...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.slice(0,2).map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
   return`<div class="card" data-t="${esc(r.ticker)}">
     <div class="row1"><div><div class="rk">#${r.rank}${r.rank_change?` · ${r.rank_change>0?"▲":"▼"}${Math.abs(r.rank_change)}`:""}</div><div class="tk">${esc(r.ticker)}</div></div><span class="score ${r.tier}">${r.score.toFixed(0)}</span></div>
@@ -607,13 +623,20 @@ function card(r){
     ${bars(r.pillars)}
     <div class="why">${r.strengths.slice(0,3).map(s=>`<span>${esc(s.label)} ${esc(s.value)}</span>`).join("")}</div>
     ${tags?`<div class="tags">${tags}</div>`:""}</div>`}
+function pickTop(R,max){const buys=R.filter(r=>r.tier==="BUY"),watch=R.filter(r=>r.tier==="WATCH");
+  return buys.concat(buys.length<4?watch.slice(0,Math.min(max,8)-buys.length):[]).slice(0,max)}
 function renderCards(){
   const R=D.results.filter(inSector),buys=R.filter(r=>r.tier==="BUY"),watch=R.filter(r=>r.tier==="WATCH");
-  const top=buys.concat(buys.length<4?watch.slice(0,8-buys.length):[]).slice(0,12);
   const tally=`${buys.length} buy · ${watch.length} watch · ${R.filter(r=>r.tier==="AVOID").length} avoid`;
-  $("#buyN").textContent=SECTOR?`${sectLabel(SECTOR)} · ${tally}`:tally;
-  $("#cards").innerHTML=top.length?top.map(card).join(""):`<div class="empty">Nothing in ${esc(sectLabel(SECTOR||""))} clears the bar this run.</div>`;
-}
+  $("#buyN").textContent=[BAND&&BANDS.find(b=>b[0]===BAND)[1],SECTOR&&sectLabel(SECTOR),tally].filter(Boolean).join(" · ");
+  const where=SECTOR?` in ${esc(sectLabel(SECTOR))}`:"";
+  const groups=(BAND?[BAND]:["SMALL","PROVEN","MEGA"]).map(b=>{const G=R.filter(r=>bandOf(r)===b);
+    return{b,G,top:pickTop(G,b==="SMALL"?12:b==="PROVEN"?6:4)}}).filter(g=>g.top.length||(BAND&&g.b===BAND));
+  if(!groups.length){$("#cards").innerHTML=`<div class="empty">Nothing${where} clears the bar this run.</div>`;$("#cards").className="";return}
+  $("#cards").className="";
+  $("#cards").innerHTML=groups.map(({b,G,top})=>{const [_,l,d]=BANDS.find(x=>x[0]===b);
+    return`<div class="bgroup"><div class="bgh"><b>${l}</b><span>${b==="MEGA"&&!BAND?"$500B+ · scoring 80+ with no red flags":d} · ${G.filter(r=>r.tier==="BUY").length} buy of ${G.length}</span></div>
+      <div class="cards">${top.length?top.map(card).join(""):`<div class="empty">Nothing${where} clears the bar this run.</div>`}</div></div>`}).join("")}
 function renderSectors(){
   const S=(D.summary||{}).sector_heat||[];const mx=Math.max(1,...S.map(s=>s.count));
   $("#sectors").innerHTML=S.length?S.slice(0,11).map(s=>`<div class="srow ${SECTOR===s.sector?"on":""}" data-sector="${esc(s.sector)}"><span>${esc(s.sector)}</span><span class="mono r">${s.count}</span><span class="mono r ${s.buys?"":"dim"}">${s.buys}</span>
@@ -653,7 +676,7 @@ function renderTable(){
   const rs=D.results.filter(inSector).filter(r=>FILTER==="ALL"||(FILTER==="HUNT"?r.discovery?.hunt:FILTER==="GEM"?r.diamond:r.tier===FILTER))
     .filter(r=>!q||[r.ticker,r.name,r.sector,r.industry].join(" ").toLowerCase().includes(q))
     .sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*SORT.dir});
-  $("#tblN").textContent=`${rs.length} of ${D.results.length}${SECTOR?" · "+sectLabel(SECTOR):""}`;
+  $("#tblN").textContent=`${rs.length} of ${D.results.length}${BAND?" · "+BANDS.find(b=>b[0]===BAND)[1]:""}${SECTOR?" · "+sectLabel(SECTOR):""}`;
   $("#tbody").innerHTML=rs.length?rs.map(r=>`<tr data-t="${esc(r.ticker)}">${COLS.map(c=>`<td class="${c.c||""}">${c.f(r)}</td>`).join("")}</tr>`).join("")
     :`<tr><td colspan="${COLS.length}"><div class="empty">No matches.</div></td></tr>`;
 }
@@ -663,11 +686,25 @@ const SECT=[["Technology","Tech"],["Financial Services","Finance"],["Healthcare"
   ["Consumer Cyclical","Consumer"],["Consumer Defensive","Staples"],["Basic Materials","Materials"],["Communication Services","Comms"],
   ["Real Estate","Real estate"],["Utilities","Utilities"]];
 let SECTOR=null;
-const inSector=r=>!SECTOR||r.sector===SECTOR;
+/* cap bands: small is the hunt; $50–500B is growth & proven; megacaps stay out of sight unless they earn a BUY
+   (80+ with no red flags), since a $3T name isn't doubling on an ordinary quarter */
+const BANDS=[["SMALL","Small","under $50B"],["PROVEN","Growth & proven","$50B–$500B"],["MEGA","Megacaps","$500B+ · only if extraordinary"]];
+let BAND=(()=>{try{return localStorage.getItem("pulse-band")||null}catch{return null}})();
+const bandOf=r=>(r.market_cap||0)>=5e11?"MEGA":(r.market_cap||0)>=5e10?"PROVEN":"SMALL";
+const extraordinary=r=>bandOf(r)==="MEGA"&&r.tier==="BUY";
+const shown=r=>BAND?bandOf(r)===BAND:bandOf(r)!=="MEGA"||extraordinary(r);
+const inSector=r=>shown(r)&&(!SECTOR||r.sector===SECTOR);
+function renderBandBar(){
+  const n=b=>D.results.filter(r=>bandOf(r)===b),hid=n("MEGA").filter(r=>!extraordinary(r)).length;
+  const sub=b=>{const R=n(b),buys=R.filter(r=>r.tier==="BUY").length;return b==="MEGA"?`${R.length} · ${R.length-hid} extraordinary`:`${R.length} names · ${buys} buy`};
+  $("#bandBar").innerHTML=`<button class="band ${BAND?"":"on"}" data-band=""><span class="bn">All that matter</span><span class="bs">${D.results.length-hid} names${hid?` · ${hid} megacap${hid>1?"s":""} hidden`:""}</span></button>`+
+    BANDS.map(([b,l,d])=>`<button class="band ${BAND===b?"on":""}" data-band="${b}" title="${d}"><span class="bn">${l}</span><span class="bs">${d.split(" ·")[0]} · ${sub(b)}</span></button>`).join("")}
+function setBand(b){BAND=b||null;try{BAND?localStorage.setItem("pulse-band",BAND):localStorage.removeItem("pulse-band")}catch{}
+  renderBandBar();renderSectorBar();renderCards();renderTable()}
 const sectLabel=s=>(SECT.find(x=>x[0]===s)||[0,s])[1];
 function renderSectorBar(){
-  const n=s=>D.results.filter(r=>r.sector===s).length;
-  $("#secBar").innerHTML=`<button class="sec ${SECTOR?"":"on"}" data-sector="">All <b>${D.results.length}</b></button>`+
+  const n=s=>D.results.filter(r=>shown(r)&&r.sector===s).length;
+  $("#secBar").innerHTML=`<button class="sec ${SECTOR?"":"on"}" data-sector="">All <b>${D.results.filter(shown).length}</b></button>`+
     SECT.map(([s,l])=>{const k=n(s);return`<button class="sec ${SECTOR===s?"on":""}" data-sector="${esc(s)}" ${k?"":"disabled"}>${l} <b>${k}</b></button>`}).join("");
 }
 function setSector(s){SECTOR=s||null;renderSectorBar();renderCards();renderSectors();renderTable()}
@@ -926,7 +963,7 @@ $("#wlNew").onclick=async()=>{const f=(prompt("New folder name")||"").trim();if(
 $("#wtab").onclick=()=>$("#watch").scrollIntoView({behavior:"smooth",block:"start"});
 
 /* ---------- data ---------- */
-function renderAll(){renderRead();renderSectorBar();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results,(D.summary||{}).news_tone,(D.summary||{}).researched)}
+function renderAll(){renderRead();renderBandBar();renderSectorBar();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results.filter(r=>bandOf(r)!=="MEGA"||extraordinary(r)),(D.summary||{}).news_tone,(D.summary||{}).researched)}
 function renderHero(){const c=D.counts||{},S=D.summary||{};
   $("#heroN").innerHTML=`<b>${c.BUY||0}</b> to buy<span class="sep">/</span>${c.WATCH||0} watch<span class="sep">/</span>${c.AVOID||0} avoid`;
   $("#heroLbl").textContent=`${(S.hunt_total||0).toLocaleString()} screened · ${S.researched||0} researched · ${S.rejected||0} filtered out`}
@@ -948,6 +985,7 @@ document.querySelectorAll(".pill").forEach(p=>p.onclick=()=>{document.querySelec
 $("#q").oninput=renderTable;
 $("#thead").onclick=e=>{const th=e.target.closest("th");if(!th)return;const k=th.dataset.k;SORT=SORT.k===k?{k,dir:-SORT.dir}:{k,dir:["rank","ticker","tier","er","ind"].includes(k)?1:-1};renderTable()};
 document.addEventListener("click",e=>{
+  const bd=e.target.closest("[data-band]");if(bd){setBand(BAND===bd.dataset.band?"":bd.dataset.band);return}
   const sc=e.target.closest("[data-sector]");if(sc&&!sc.disabled){const s=sc.dataset.sector;setSector(sc.classList.contains("srow")&&SECTOR===s?"":s);return}
   const cp=e.target.closest("#drawer [data-c]");if(cp){openT(cp.dataset.c);return}
   const el=e.target.closest("[data-t]");if(el&&!e.target.closest("#drawer"))openT(el.dataset.t)});

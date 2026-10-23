@@ -40,6 +40,9 @@ read      news + social tone (VADER), IWM/SPY/QQQ/VIX backdrop, sector heat, wri
 
 BUY needs 70 (75 over $50B, 80 over $500B — the names everyone already knows have to earn it).
 No size ceiling: megacaps can be ranked, but the Early pillar scores anything over $500B as zero on size.
+The dashboard splits everything into cap bands: **Small** (under $50B, the hunt), **Growth & proven** ($50B–$500B)
+and **Megacaps** ($500B+). Megacaps stay hidden unless they're doing something extraordinary (a BUY: 80+ with no
+red flags); the Megacaps band shows them all if you want to look.
 **◆ Diamonds in the rough**: under $3B, ≤ 6 analysts, growth pillar ≥ 65, quality ≥ 50, score ≥ 60, no red flags.
 
 Red flags (−7 each, 2+ = AVOID): dilution > 15%, recent offering/shelf (SEC), short float > 25%, +50% in 5d,
