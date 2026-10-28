@@ -116,6 +116,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(502, json.dumps({"error": f"{type(e).__name__}: {e}"}).encode())
         elif path == "/api/watchlist":
             self._send(200, json.dumps(ranker.clean(watchlist.view())).encode())
+        elif path == "/api/track":
+            self._send(200, json.dumps(ranker.track_record()).encode())
         elif path == "/api/status":
             self._send(200, json.dumps({**state, "interval_min": INTERVAL_MIN}).encode())
         else:

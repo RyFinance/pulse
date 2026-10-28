@@ -54,6 +54,10 @@ News and social volume decide what gets looked at and feed the pump checks. They
 **New & rising** lists names first ranked in the last 7 days (with where they came from) and the biggest
 7-day score gains, so fresh finds don't sit under the same leaders.
 
+**Track record** (bottom, starts collapsed) replays every saved run: for each name that has made the top 10 or
+top 20, how long it has held the spot, whether it is still there, and the price move since it got in, since it
+first scored 70/75/80, and since Pulse first ranked it. The full ranking shows its first 12 rows until expanded.
+
 ## Inside every pick
 
 - **Chart** — line chart in the style of Apple Stocks, 1D / 1W / 1M / 3M / 1Y / 3Y / 5Y / 10Y. Hover to scrub;
@@ -71,7 +75,7 @@ News and social volume decide what gets looked at and feed the pump checks. They
 | `ranker.py` | discover → gate → research → score → `rankings.json` |
 | `server.py` | dashboard on :8790, re-ranks every 60 min |
 | `watchlist.py` | watchlist folders and since-added stats → `watchlist.json` (gitignored) |
-| `dashboard.html` | the UI: aero-shards hero with paper-airplane picks, sector filter, Apple-style price chart (1D–10Y, click to pin a date and measure from it), competitor check, watchlist |
+| `dashboard.html` | the UI: aero-shards hero with paper-airplane picks, sector filter, Apple-style price chart (1D–10Y, click to pin a date and measure from it), competitor check, watchlist, track record |
 | `scraper.py` | Reddit (rdt-cli) + X (headless Chrome) → `raw_data.json`, ~13s |
 | `save_x_session.py` | log in to X once; saves `x_session.json` (gitignored) |
 | `valid_tickers.txt` | listed US tickers used to validate cashtags |

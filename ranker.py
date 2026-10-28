@@ -982,6 +982,71 @@ def history_trend(days: int = 7) -> dict:
     return out
 
 
+TRACK_TOPS, TRACK_MARKS = (10, 20), (70, 75, 80)
+_track = {"key": None, "data": None}
+
+
+def track_record() -> dict:
+    """Every name that has made Pulse's top 20: how long it has held its spot, and what the price did
+    since it got in, since it first scored 70/75/80, and since Pulse first ranked it."""
+    files = sorted(HIST.glob("*.json"))
+    if not files:
+        return {"runs": 0, "items": []}
+    if _track["key"] == (files[-1].name, len(files)):
+        return _track["data"]
+    runs = []
+    for f in files:
+        try:
+            ts = dt.datetime.strptime(f.stem, "%Y-%m-%d_%H%M").replace(tzinfo=dt.timezone.utc)
+            runs.append((ts, json.loads(f.read_text()).get("results", [])))
+        except (ValueError, OSError):
+            continue
+    last_ts, last = runs[-1][0], {r["ticker"]: r for r in runs[-1][1]}
+    out = {}
+    for i, (ts, res) in enumerate(runs):
+        gap = (runs[i + 1][0] if i + 1 < len(runs) else now_utc()) - ts  # time this run's ranking stood
+        for r in res:
+            t = out.setdefault(r["ticker"], {"ticker": r["ticker"], "first_seen": ts, "first_price": r.get("price"),
+                                             "best": 0, "tops": {}, "marks": {}})
+            t["best"] = max(t["best"], r.get("score") or 0)
+            for n in TRACK_TOPS:
+                z = t["tops"].setdefault(n, {"since": None, "price": None, "hours": 0.0, "streak_from": None, "last": None})
+                if (r.get("rank") or 999) <= n:
+                    if z["since"] is None:
+                        z["since"], z["price"] = ts, r.get("price")
+                    if z["last"] != i - 1:
+                        z["streak_from"] = ts
+                    z["hours"] += min(gap.total_seconds(), 6 * 3600) / 3600  # a long gap between runs isn't counted
+                    z["last"] = i
+            for m in TRACK_MARKS:
+                if (r.get("score") or 0) >= m and m not in t["marks"]:
+                    t["marks"][m] = {"at": ts, "price": r.get("price"), "score": r.get("score")}
+    chg = lambda now, then: now / then - 1 if now and then else None
+    items = []
+    for t in out.values():
+        if t["tops"].get(max(TRACK_TOPS), {}).get("since") is None:
+            continue
+        now = last.get(t["ticker"])
+        px = now and now.get("price")
+        if px is None:  # dropped off the latest run: use the last price Pulse saw
+            px = next((r.get("price") for _, res in reversed(runs) for r in res if r["ticker"] == t["ticker"]), None)
+        items.append({
+            "ticker": t["ticker"], "rank": now and now.get("rank"), "score": now and now.get("score"),
+            "tier": now and now.get("tier"), "best": t["best"], "price": px,
+            "first_seen": t["first_seen"], "since_seen": chg(px, t["first_price"]),
+            "tops": {n: {"since": z["since"], "hours": round(z["hours"], 1), "since_pct": chg(px, z["price"]),
+                         "in_now": z["last"] == len(runs) - 1,
+                         "streak_h": round((now_utc() - z["streak_from"]).total_seconds() / 3600, 1)
+                         if z["last"] == len(runs) - 1 else None}
+                     for n, z in t["tops"].items() if z["since"]},
+            "marks": {m: {"at": v["at"], "score": v["score"], "since_pct": chg(px, v["price"])} for m, v in t["marks"].items()},
+        })
+    data = clean({"runs": len(runs), "from": runs[0][0], "to": last_ts, "tops": TRACK_TOPS, "marks": TRACK_MARKS,
+                  "items": items})
+    _track.update(key=(files[-1].name, len(files)), data=data)
+    return data
+
+
 def run(verbose: bool = True) -> dict:
     load_env()
     t0 = time.time()

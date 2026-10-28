@@ -231,6 +231,20 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 .lrow .nm small{color:var(--mute);font:11.5px var(--mono);margin-left:6px}
 .lrow .d{font:13px var(--mono);text-align:right}
 @media (max-width:1000px){.lane{grid-template-columns:1fr;gap:28px}}
+.fold>.sh{cursor:pointer;user-select:none}
+.fold>.sh h2 .car{display:inline-block;font-family:var(--mono);color:var(--mute);margin-right:8px;transition:transform .15s}
+.fold.shut>.sh h2 .car{transform:rotate(-90deg)}.fold.shut>.fbody{display:none}
+.fold>.sh:hover h2{color:var(--ink-2)}
+.trbar{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:12px;color:var(--mute)}
+.seg{display:inline-flex;border:1px solid var(--line-2)}
+.seg button{font:600 12px var(--mono);padding:5px 11px;color:var(--ink-2)}
+.seg button+button{border-left:1px solid var(--line-2)}
+.seg button.on{background:var(--signal);color:var(--on-signal)}
+#trTbl td{white-space:nowrap}
+#trTbl td small{display:block;color:var(--mute);font:11px var(--mono);margin-top:2px}
+#trTbl tr.out td{opacity:.62}
+.more{display:block;width:100%;padding:12px;font:600 12px var(--mono);letter-spacing:.06em;color:var(--ink-2);border-top:1px solid var(--line);text-align:center}
+.more:hover{background:var(--panel);color:var(--ink)}
 /* cap bands */
 .bandbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line-2);margin:-2px 0 14px}
 .band{text-align:left;padding:10px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -362,12 +376,25 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
       <input class="search" id="q" placeholder="ticker, name, industry…" autocomplete="off">
     </div>
     <div class="tw"><table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+    <button class="more" id="tblMore" hidden></button>
   </section>
 
   <section id="watch">
     <div class="sh"><h2>Watchlist</h2><span class="aside" id="wlN">since added · rating then → now</span></div>
     <div class="wbar"><button class="pill" id="wlNew">+ folder</button><span class="dim" style="font-size:12.5px">open any stock and hit ☆ Watch to add it · click a row to open it</span></div>
     <div id="wlBody"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section id="track" class="fold shut">
+    <div class="sh" id="trackH"><h2><span class="car">▾</span>Track record</h2><span class="aside" id="trN">how long names hold the top · what they did after</span></div>
+    <div class="fbody">
+      <div class="trbar">
+        <span>Held the</span><span class="seg" id="trTop"><button data-top="10" class="on">Top 10</button><button data-top="20">Top 20</button></span>
+        <span>Since first scoring</span><span class="seg" id="trMark"><button data-mark="70">70+</button><button data-mark="75" class="on">75+</button><button data-mark="80">80+</button></span>
+        <span id="trSpan"></span>
+      </div>
+      <div class="tw"><table id="trTbl"><thead><tr id="trHead"></tr></thead><tbody id="trBody"></tbody></table></div>
+    </div>
   </section>
 
   <div class="foot">
@@ -704,6 +731,7 @@ const COLS=[
   {k:"tone",l:"Tone",c:"r",v:r=>r.sentiment?.news_tone,f:r=>{const t=r.sentiment?.news_tone;return t==null?'<span class="dim">—</span>':`<span class="${t>=.05?"up":t<=-.05?"down":"dim"}">${t>=0?"+":""}${t.toFixed(2)}</span>`}},
   {k:"er",l:"Earnings",c:"r",v:r=>r.days_to_earnings??999,f:r=>r.days_to_earnings==null||r.days_to_earnings<0?'<span class="dim">—</span>':`<span class="${r.days_to_earnings<=7?"warn":""}">${r.days_to_earnings}d</span>`},
 ];
+let TBL_OPEN=false;  // starts collapsed every visit: the full list is long
 function renderTable(){
   $("#thead").innerHTML=COLS.map(c=>`<th class="${c.c||""} ${SORT.k===c.k?"on":""}" data-k="${c.k}">${c.l}${SORT.k===c.k?(SORT.dir>0?" ↑":" ↓"):""}</th>`).join("");
   const q=$("#q").value.trim().toLowerCase(),col=COLS.find(c=>c.k===SORT.k);
@@ -711,7 +739,10 @@ function renderTable(){
     .filter(r=>!q||[r.ticker,r.name,r.sector,r.industry].join(" ").toLowerCase().includes(q))
     .sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*SORT.dir});
   $("#tblN").textContent=`${rs.length} of ${D.results.length}${BAND?" · "+BANDS.find(b=>b[0]===BAND)[1]:""}${SECTOR?" · "+sectLabel(SECTOR):""}`;
-  $("#tbody").innerHTML=rs.length?rs.map(r=>`<tr data-t="${esc(r.ticker)}">${COLS.map(c=>`<td class="${c.c||""}">${c.f(r)}</td>`).join("")}</tr>`).join("")
+  const PREVIEW=12,all=TBL_OPEN||q||rs.length<=PREVIEW+3,vis=all?rs:rs.slice(0,PREVIEW);
+  $("#tblMore").hidden=rs.length<=PREVIEW+3||!!q;
+  $("#tblMore").textContent=TBL_OPEN?"Collapse ▴":`Show all ${rs.length} ▾`;
+  $("#tbody").innerHTML=rs.length?vis.map(r=>`<tr data-t="${esc(r.ticker)}">${COLS.map(c=>`<td class="${c.c||""}">${c.f(r)}</td>`).join("")}</tr>`).join("")
     :`<tr><td colspan="${COLS.length}"><div class="empty">No matches.</div></td></tr>`;
 }
 
@@ -996,13 +1027,45 @@ $("#wlBody").addEventListener("click",async e=>{
 $("#wlNew").onclick=async()=>{const f=(prompt("New folder name")||"").trim();if(f)await wlDo({op:"folder_add",name:f})};
 $("#wtab").onclick=()=>$("#watch").scrollIntoView({behavior:"smooth",block:"start"});
 
+/* ---------- track record ---------- */
+let TR=null,TR_TOP="10",TR_MARK="75",TR_SORT={k:"hours",dir:-1};
+const dur=h=>h==null?"—":h<24?`${Math.max(1,Math.round(h))}h`:`${Math.floor(h/24)}d${Math.round(h%24)?` ${Math.round(h%24)}h`:""}`;
+const TRC=[
+  {k:"ticker",l:"Ticker",v:x=>x.ticker,f:x=>`<b>${esc(x.ticker)}</b>`},
+  {k:"rank",l:"Now",c:"r",v:x=>x.rank??999,f:x=>x.rank?`#${x.rank} <span class="tier ${x.tier}">${x.score.toFixed(0)}</span>`:'<span class="dim">off list</span>'},
+  {k:"hours",l:"Time in",c:"r",v:x=>x.t.hours,f:x=>`<b>${dur(x.t.hours)}</b><small>${x.t.in_now?`in now · ${dur(x.t.streak_h)} run`:"dropped out"}</small>`},
+  {k:"since",l:"Got in",c:"r",v:x=>x.t.since,f:x=>day(x.t.since)},
+  {k:"pin",l:"Since got in",c:"r",v:x=>x.t.since_pct,f:x=>pct(x.t.since_pct,1)},
+  {k:"mark",l:"First hit",c:"r",v:x=>x.m?.at,f:x=>x.m?`${day(x.m.at)}<small>scored ${x.m.score.toFixed(0)}</small>`:'<span class="dim">never</span>'},
+  {k:"pmark",l:"Since hit",c:"r",v:x=>x.m?.since_pct,f:x=>x.m?pct(x.m.since_pct,1):'<span class="dim">—</span>'},
+  {k:"best",l:"Best",c:"r",v:x=>x.best,f:x=>x.best.toFixed(0)},
+  {k:"seen",l:"First seen",c:"r",v:x=>x.first_seen,f:x=>day(x.first_seen)},
+  {k:"pseen",l:"Since seen",c:"r",v:x=>x.since_seen,f:x=>pct(x.since_seen,1)},
+];
+async function trLoad(){try{TR=await (await fetch("/api/track",{cache:"no-store"})).json();renderTrack()}catch{$("#trBody").innerHTML='<tr><td><div class="empty">Couldn\'t load the track record.</div></td></tr>'}}
+function renderTrack(){if(!TR)return;
+  const rows=TR.items.filter(x=>x.tops[TR_TOP]).map(x=>({...x,t:x.tops[TR_TOP],m:x.marks[TR_MARK]})),col=TRC.find(c=>c.k===TR_SORT.k);
+  rows.sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null)return 1;if(y==null)return-1;return(x>y?1:x<y?-1:0)*TR_SORT.dir});
+  const inNow=rows.filter(x=>x.t.in_now).length,avg=a=>{const v=a.filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
+  const aIn=avg(rows.map(x=>x.t.since_pct));
+  $("#trN").textContent=`${rows.length} names have made the top ${TR_TOP} · ${inNow} still there`;
+  $("#trSpan").innerHTML=`${TR.runs} runs since ${day(TR.from)} · avg since got in ${pct(aIn,1)}`;
+  $("#trHead").innerHTML=TRC.map(c=>`<th class="${c.c||""} ${TR_SORT.k===c.k?"on":""}" data-tk="${c.k}">${c.k==="hours"?`Time in top ${TR_TOP}`:c.k==="mark"?`First ${TR_MARK}+`:c.l}${TR_SORT.k===c.k?(TR_SORT.dir>0?" ↑":" ↓"):""}</th>`).join("");
+  $("#trBody").innerHTML=rows.length?rows.map(x=>`<tr data-t="${esc(x.ticker)}" class="${x.t.in_now?"":"out"}">${TRC.map(c=>`<td class="${c.c||""}">${c.f(x)}</td>`).join("")}</tr>`).join("")
+    :`<tr><td colspan="${TRC.length}"><div class="empty">Nothing yet.</div></td></tr>`}
+$("#trackH").onclick=()=>{const s=$("#track").classList.toggle("shut");if(!s&&!TR)trLoad()};
+$("#trTop").onclick=e=>{const b=e.target.closest("[data-top]");if(!b)return;TR_TOP=b.dataset.top;$("#trTop").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));renderTrack()};
+$("#trMark").onclick=e=>{const b=e.target.closest("[data-mark]");if(!b)return;TR_MARK=b.dataset.mark;$("#trMark").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));renderTrack()};
+$("#trHead").onclick=e=>{const th=e.target.closest("th");if(!th)return;const k=th.dataset.tk;TR_SORT=TR_SORT.k===k?{k,dir:-TR_SORT.dir}:{k,dir:["ticker","rank"].includes(k)?1:-1};renderTrack()};
+$("#tblMore").onclick=()=>{const was=TBL_OPEN;TBL_OPEN=!TBL_OPEN;renderTable();if(was)$("#tbody").closest("section").scrollIntoView({block:"start"})};
+
 /* ---------- data ---------- */
 function renderAll(){renderRead();renderBandBar();renderSectorBar();renderCards();renderLanes();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results.filter(r=>bandOf(r)!=="MEGA"||extraordinary(r)),(D.summary||{}).news_tone,(D.summary||{}).researched)}
 function renderHero(){const c=D.counts||{},S=D.summary||{};
   $("#heroN").innerHTML=`<b>${c.BUY||0}</b> to buy<span class="sep">/</span>${c.WATCH||0} watch<span class="sep">/</span>${c.AVOID||0} avoid`;
   $("#heroLbl").textContent=`${(S.hunt_total||0).toLocaleString()} screened · ${S.researched||0} researched · ${S.rejected||0} filtered out`}
 async function load(){
-  try{D=await (await fetch("/api/rankings",{cache:"no-store"})).json();D.results=D.results||[];D.rejected=D.rejected||[];LAST=D.generated_at;renderAll()}
+  try{D=await (await fetch("/api/rankings",{cache:"no-store"})).json();D.results=D.results||[];D.rejected=D.rejected||[];LAST=D.generated_at;renderAll();if(TR)trLoad()}
   catch(e){$("#read").textContent="Can't reach the Pulse server."}
 }
 async function poll(){
@@ -1015,7 +1078,7 @@ async function poll(){
   }catch{$("#dot").className="dot err";$("#status").textContent="offline"}
 }
 $("#run").onclick=async()=>{$("#run").disabled=true;await fetch("/api/run",{method:"POST"});poll()};
-document.querySelectorAll(".pill").forEach(p=>p.onclick=()=>{document.querySelectorAll(".pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");FILTER=p.dataset.f;renderTable()});
+document.querySelectorAll(".controls .pill").forEach(p=>p.onclick=()=>{document.querySelectorAll(".controls .pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");FILTER=p.dataset.f;renderTable()});
 $("#q").oninput=renderTable;
 $("#thead").onclick=e=>{const th=e.target.closest("th");if(!th)return;const k=th.dataset.k;SORT=SORT.k===k?{k,dir:-SORT.dir}:{k,dir:["rank","ticker","tier","er","ind"].includes(k)?1:-1};renderTable()};
 document.addEventListener("click",e=>{
