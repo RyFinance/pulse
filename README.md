@@ -17,9 +17,10 @@ Not "MU has crazy revenue." The point is finding the next one while it's $500M, 
 ## How it hunts
 
 ```
-hunt      Yahoo screen: every US-listed stock over $50M with quarterly revenue +25%,
-          pre-ranked on trend, extension, size and improving EPS → top 70 researched
-          (50 under $10B, 20 proven names above)
+hunt      Yahoo screen: every US-listed stock over $50M with quarterly revenue +25% (~860 names).
+          Each run researches the 40 best pre-ranked (trend, extension, size, improving EPS), plus a
+          35-name slice walking the rest alphabetically, so the whole screen gets looked at about once a day.
+          Any screen name scoring 62+ is kept in every run until it fades.
 heat      names hot in news (Massive, Yahoo), Reddit/X cashtags (scraper.py), small-cap gainers
           → top 50 researched, at most 8 of them megacaps (> $500B) so hype can't crowd out the gems
 gate      hard rejects: OTC, < $1, < $1M/day traded, < $10M revenue, shares +30%/yr, reverse split
@@ -49,6 +50,9 @@ Red flags (−7 each, 2+ = AVOID): dilution > 15%, recent offering/shelf (SEC), 
 press-release-heavy news, social hype with no independent coverage, estimate cuts, broken chart, D/E > 3.
 
 News and social volume decide what gets looked at and feed the pump checks. They never add to the score.
+
+**New & rising** lists names first ranked in the last 7 days (with where they came from) and the biggest
+7-day score gains, so fresh finds don't sit under the same leaders.
 
 ## Inside every pick
 
@@ -87,7 +91,7 @@ Always on: `com.rytty.pulse.plist` → `~/Library/LaunchAgents/`, then `launchct
 Keys in `.env` (gitignored): `MASSIVE_API_KEY`, `FINNHUB_API_KEY`. Optional `SEC_USER_AGENT="name email"`
 turns on SEC EDGAR checks (offerings, delisting notices, late filings, insider filings); set it with
 `launchctl setenv` so it never lands in a file. Tunables: `PULSE_MIN_MCAP`, `PULSE_MAX_MCAP`,
-`PULSE_MIN_DOLLAR_VOL`, `PULSE_MIN_REVENUE`, `PULSE_HUNT_DEEP`, `PULSE_HEAT_DEEP`, `PULSE_INTERVAL_MIN`, `PULSE_SCRAPE=0`.
+`PULSE_MIN_DOLLAR_VOL`, `PULSE_MIN_REVENUE`, `PULSE_HUNT_CORE`, `PULSE_HUNT_ROTATE`, `PULSE_HEAT_DEEP`, `PULSE_INTERVAL_MIN`, `PULSE_SCRAPE=0`.
 
 ---
 

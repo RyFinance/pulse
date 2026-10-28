@@ -87,9 +87,11 @@ MIN_PRICE = float(env("PULSE_MIN_PRICE", 1))
 MIN_DOLLAR_VOL = float(env("PULSE_MIN_DOLLAR_VOL", 1e6))
 MIN_REVENUE = float(env("PULSE_MIN_REVENUE", 1e7))
 HUNT_PAGES = int(env("PULSE_HUNT_PAGES", 5))       # 250 screen rows per page, smallest caps first
-HUNT_DEEP = int(env("PULSE_HUNT_DEEP", 70))        # screen names that get full research
-HUNT_BIG = int(env("PULSE_HUNT_BIG", 20))          # of those, slots kept for proven names over $10B
 HEAT_DEEP = int(env("PULSE_HEAT_DEEP", 50))        # hot names that get full research
+HUNT_CORE = int(env("PULSE_HUNT_CORE", 40))        # best pre-ranked screen names, researched every run (10 of them > $10B)
+HUNT_ROTATE = int(env("PULSE_HUNT_ROTATE", 35))    # plus a rotating slice of the rest: the whole screen gets a look every ~day
+KEEP_MIN_SCORE = 62                                # screen names this good stay in every run until they fade
+ROTATION = CACHE / "hunt_rotation.json"
 NEWS_HOURS = int(env("PULSE_NEWS_HOURS", 48))
 SOCIAL_MAX_AGE_MIN = float(env("PULSE_SOCIAL_MAX_AGE_MIN", 50))
 FUND_TTL_H = float(env("PULSE_FUND_TTL_H", 12))
@@ -951,6 +953,35 @@ def write_read(rows, rejected, market, news_overall, social_overall, hunt_total)
     return " ".join(parts)
 
 
+def _rotation_state() -> dict:
+    try:
+        d = json.loads(ROTATION.read_text())
+        return {"offset": int(d.get("offset", 0)), "kept": dict(d.get("kept") or {})}
+    except (OSError, ValueError):
+        return {"offset": 0, "kept": {}}
+
+
+def _save_rotation(d: dict) -> None:
+    CACHE.mkdir(exist_ok=True)
+    ROTATION.write_text(json.dumps(clean(d)))
+
+
+def history_trend(days: int = 7) -> dict:
+    """Per ticker: when Pulse first ranked it, and its score/rank about a week ago (oldest run in the window)."""
+    out, cut = {}, now_utc() - dt.timedelta(days=days)
+    for f in sorted(HIST.glob("*.json")):
+        try:
+            ts = dt.datetime.strptime(f.stem, "%Y-%m-%d_%H%M").replace(tzinfo=dt.timezone.utc)
+            res = json.loads(f.read_text()).get("results", [])
+        except (ValueError, OSError):
+            continue
+        for r in res:
+            t = out.setdefault(r["ticker"], {"first_seen": ts.isoformat()})
+            if ts >= cut and "score_wk" not in t:
+                t["score_wk"], t["rank_wk"] = r.get("score"), r.get("rank")
+    return out
+
+
 def run(verbose: bool = True) -> dict:
     load_env()
     t0 = time.time()
@@ -964,10 +995,25 @@ def run(verbose: bool = True) -> dict:
     hunt_rows, hunt_total = hunt_screen()
     hunt = sorted(((prerank(q), q["symbol"], num(q.get("marketCap")) or 0) for q in hunt_rows
                    if to_yahoo(q["symbol"])), reverse=True)
-    big = [s for v, s, m in hunt if v >= 0 and m > 1e10][:HUNT_BIG]
-    small = [s for v, s, m in hunt if v >= 0 and m <= 1e10][:HUNT_DEEP - len(big)]
-    hunt_syms = small + big
-    log(f"[hunt] {hunt_total} growers screened → {len(hunt_syms)} shortlisted")
+    ok = [(s, m) for v, s, m in hunt if v >= 0]
+    big = [s for s, m in ok if m > 1e10][:HUNT_CORE // 4]
+    core = [s for s, m in ok if m <= 1e10][:HUNT_CORE - len(big)] + big
+    rot_state = _rotation_state()
+    try:  # any screen name the last run rated well stays in, so a good name never drops out between laps
+        for r in json.loads(OUT.read_text()).get("results", []):
+            if (r.get("discovery") or {}).get("hunt") and r["score"] >= KEEP_MIN_SCORE and r["tier"] != "AVOID":
+                rot_state["kept"].setdefault(r["ticker"], {"since": dt.date.today().isoformat(), "score": r["score"],
+                                                            "via": "core"})
+    except (OSError, ValueError, KeyError):
+        pass
+    in_screen = {s for s, _ in ok}
+    kept = {s: k for s, k in rot_state["kept"].items() if s in in_screen and s not in core}
+    rest = sorted(s for s, _ in ok if s not in core and s not in kept)  # alphabetical: a fixed walk that covers everything
+    off = rot_state["offset"] % len(rest) if rest else 0
+    rotate = (rest[off:] + rest[:off])[:HUNT_ROTATE]
+    hunt_syms = list(dict.fromkeys(core + list(kept) + rotate))
+    log(f"[hunt] {hunt_total} growers screened → {len(core)} core + {len(kept)} kept finds + {len(rotate)} rotating "
+        f"({off}/{len(rest)} through the rest)")
 
     heat = Counter()
     for s, n in (mheat + yheat).items():
@@ -1013,14 +1059,15 @@ def run(verbose: bool = True) -> dict:
     perf = performance(universe + ["SPY", "QQQ", "IWM", "^VIX"])
 
     rows, rejected = [], []
-    hunt_set = set(hunt_syms)
+    hunt_set, rot_set = set(hunt_syms), set(rotate)
+    deep_set = rot_set | {s for s, k in kept.items() if k.get("via") == "rotation"}  # found by walking the whole screen
     for sym in universe:
         info, deep, p = infos[sym], deeps.get(sym, {}), perf.get(sym)
         if not p:
             continue
         x = features(info, deep, p)
         why = gate(sym, info, deep, p, secs.get(sym), x, social.get(sym), heads.get(sym, []))
-        src = {"hunt": sym in hunt_set, "news": news_count[sym], "social": (social.get(sym) or {}).get("mentions", 0),
+        src = {"hunt": sym in hunt_set, "deep": sym in deep_set, "news": news_count[sym], "social": (social.get(sym) or {}).get("mentions", 0),
                **{k: sym in {to_yahoo(v) for v in vals} for k, vals in lists.items()}}
         if why:
             rejected.append({"ticker": sym, "name": info.get("shortName") or sym, "reasons": why,
@@ -1030,6 +1077,17 @@ def run(verbose: bool = True) -> dict:
         r["discovery"], r["headlines"] = src, heads.get(sym, [])
         rows.append(r)
     rows.sort(key=lambda r: r["score"], reverse=True)
+
+    # rotation finds that score well are kept in every run; the walk moves on to the next slice
+    today = dt.date.today().isoformat()
+    new_kept = {}
+    for r in rows:
+        if r["ticker"] in hunt_set and r["score"] >= KEEP_MIN_SCORE and r["tier"] != "AVOID":
+            k = kept.get(r["ticker"]) or {}
+            new_kept[r["ticker"]] = {"since": k.get("since", today), "score": r["score"],
+                                     "via": k.get("via") or ("rotation" if r["ticker"] in rot_set else "core")}
+    _save_rotation({"offset": off + len(rotate), "kept": new_kept})
+    trend = history_trend()
 
     prev = {}
     if OUT.exists():
@@ -1041,6 +1099,10 @@ def run(verbose: bool = True) -> dict:
         r["rank"] = n
         r["rank_change"] = (prev[r["ticker"]] - n) if r["ticker"] in prev else None
         r["new"] = bool(prev) and r["ticker"] not in prev
+        t = trend.get(r["ticker"]) or {}
+        r["first_seen"] = t.get("first_seen") or now_utc().isoformat()
+        r["score_7d"] = round(r["score"] - t["score_wk"], 1) if t.get("score_wk") is not None else None
+        r["rank_7d"] = (t["rank_wk"] - n) if t.get("rank_wk") is not None else None
 
     market = {k: {m: perf.get(k, {}).get(m) for m in ("price", "r1d", "r5d", "r1m", "r3m")}
               for k in ("SPY", "QQQ", "IWM", "^VIX")}

@@ -219,6 +219,18 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
 .comps tr.self td{background:color-mix(in srgb,var(--signal) 12%,transparent)}
 .comps tr[data-c]{cursor:pointer}.comps tr[data-c]:hover td{background:var(--panel)}
 .comps .tag{font-size:10px;padding:1px 5px;margin-left:4px}
+/* new & rising */
+.lane{display:grid;grid-template-columns:1fr 1fr;gap:44px}
+.lh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+.lh b{font-size:12px;letter-spacing:.14em;text-transform:uppercase}.lh span{font:12px var(--mono);color:var(--mute)}
+.lrow{display:grid;grid-template-columns:64px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 4px;border-top:1px solid var(--line);
+  font-size:13.5px;cursor:pointer;white-space:nowrap}
+.lrow:hover{background:var(--panel)}
+.lrow .tk{font:700 14px var(--mono)}
+.lrow .nm{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
+.lrow .nm small{color:var(--mute);font:11.5px var(--mono);margin-left:6px}
+.lrow .d{font:13px var(--mono);text-align:right}
+@media (max-width:1000px){.lane{grid-template-columns:1fr;gap:28px}}
 /* cap bands */
 .bandbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line-2);margin:-2px 0 14px}
 .band{text-align:left;padding:10px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -314,6 +326,14 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--panel)}
     <div class="bandbar" id="bandBar"></div>
     <div class="secbar" id="secBar"></div>
     <div class="cards" id="cards"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section>
+    <div class="sh"><h2>New &amp; rising</h2><span class="aside">first ranked this week · biggest score gains over 7 days</span></div>
+    <div class="lane">
+      <div><div class="lh"><b>New this week</b><span id="newN"></span></div><div id="newL"></div></div>
+      <div><div class="lh"><b>Risers</b><span id="riseN"></span></div><div id="riseL"></div></div>
+    </div>
   </section>
 
   <section>
@@ -615,7 +635,7 @@ function renderRead(){
 }
 function bars(p){return`<div class="bars">${PIL.map(([k,l])=>{const s=p[k];return`<div class="bar"><div class="t"><span>${l}</span><b>${s==null?"–":Math.round(s)}</b></div><div class="track"><div class="fill ${s>=70?"hi":""}" style="width:${s??0}%"></div></div></div>`}).join("")}</div>`}
 function card(r){
-  const tags=[extraordinary(r)?'<span class="tag ext">megacap · extraordinary</span>':"",r.diamond?'<span class="tag gem">◆ diamond</span>':"",r.new?'<span class="tag new">new</span>':"",r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
+  const tags=[extraordinary(r)?'<span class="tag ext">megacap · extraordinary</span>':"",r.diamond?'<span class="tag gem">◆ diamond</span>':"",r.new?'<span class="tag new">new</span>':"",r.discovery?.deep?'<span class="tag">deep-screen find</span>':r.discovery?.hunt?'<span class="tag">screen-found</span>':"",
     ...r.flags.map(f=>`<span class="tag flag">${esc(f)}</span>`),...r.cautions.slice(0,2).map(f=>`<span class="tag caut">${esc(f)}</span>`)].join("");
   return`<div class="card" data-t="${esc(r.ticker)}">
     <div class="row1"><div><div class="rk">#${r.rank}${r.rank_change?` · ${r.rank_change>0?"▲":"▼"}${Math.abs(r.rank_change)}`:""}</div><div class="tk">${esc(r.ticker)}</div></div><span class="score ${r.tier}">${r.score.toFixed(0)}</span></div>
@@ -637,6 +657,20 @@ function renderCards(){
   $("#cards").innerHTML=groups.map(({b,G,top})=>{const [_,l,d]=BANDS.find(x=>x[0]===b);
     return`<div class="bgroup"><div class="bgh"><b>${l}</b><span>${b==="MEGA"&&!BAND?"$500B+ · scoring 80+ with no red flags":d} · ${G.filter(r=>r.tier==="BUY").length} buy of ${G.length}</span></div>
       <div class="cards">${top.length?top.map(card).join(""):`<div class="empty">Nothing${where} clears the bar this run.</div>`}</div></div>`}).join("")}
+function renderLanes(){
+  const R=D.results.filter(inSector),wk=Date.now()-7*864e5;
+  const src=r=>{const d=r.discovery||{};return d.deep?"deep screen":d.hunt?"screen":d.social?"social":d.news?"news":"lists"};
+  const fresh=R.filter(r=>r.first_seen&&new Date(r.first_seen)>=wk&&r.tier!=="AVOID").sort((a,b)=>b.score-a.score);
+  const rise=R.filter(r=>r.score_7d!=null&&r.score_7d>=1&&r.score>=55&&r.tier!=="AVOID"&&!fresh.includes(r)).sort((a,b)=>b.score_7d-a.score_7d);
+  const sc=r=>`<span class="tier ${r.tier}">${r.score.toFixed(0)}</span>`;
+  $("#newN").textContent=`${fresh.length} names`;$("#riseN").textContent=`${rise.length} names`;
+  $("#newL").innerHTML=fresh.length?fresh.slice(0,8).map(r=>`<div class="lrow" data-t="${esc(r.ticker)}"><span class="tk">${esc(r.ticker)}</span>
+    <span class="nm">${esc(r.name)}<small>${cap(r.market_cap)} · via ${src(r)}</small></span><span class="d dim">${day(r.first_seen)}</span><span class="d">${sc(r)}</span></div>`).join("")
+    :'<div class="empty">No new names this week yet.</div>';
+  $("#riseL").innerHTML=rise.length?rise.slice(0,8).map(r=>`<div class="lrow" data-t="${esc(r.ticker)}"><span class="tk">${esc(r.ticker)}</span>
+    <span class="nm">${esc(r.name)}<small>${cap(r.market_cap)} · #${r.rank} now</small></span><span class="d">${(r.score-r.score_7d).toFixed(0)} → ${r.score.toFixed(0)}</span><span class="d up">▲${r.score_7d.toFixed(1)}</span></div>`).join("")
+    :'<div class="empty">No score gains over the week.</div>';
+}
 function renderSectors(){
   const S=(D.summary||{}).sector_heat||[];const mx=Math.max(1,...S.map(s=>s.count));
   $("#sectors").innerHTML=S.length?S.slice(0,11).map(s=>`<div class="srow ${SECTOR===s.sector?"on":""}" data-sector="${esc(s.sector)}"><span>${esc(s.sector)}</span><span class="mono r">${s.count}</span><span class="mono r ${s.buys?"":"dim"}">${s.buys}</span>
@@ -700,14 +734,14 @@ function renderBandBar(){
   $("#bandBar").innerHTML=`<button class="band ${BAND?"":"on"}" data-band=""><span class="bn">All that matter</span><span class="bs">${D.results.length-hid} names${hid?` · ${hid} megacap${hid>1?"s":""} hidden`:""}</span></button>`+
     BANDS.map(([b,l,d])=>`<button class="band ${BAND===b?"on":""}" data-band="${b}" title="${d}"><span class="bn">${l}</span><span class="bs">${d.split(" ·")[0]} · ${sub(b)}</span></button>`).join("")}
 function setBand(b){BAND=b||null;try{BAND?localStorage.setItem("pulse-band",BAND):localStorage.removeItem("pulse-band")}catch{}
-  renderBandBar();renderSectorBar();renderCards();renderTable()}
+  renderBandBar();renderSectorBar();renderCards();renderLanes();renderTable()}
 const sectLabel=s=>(SECT.find(x=>x[0]===s)||[0,s])[1];
 function renderSectorBar(){
   const n=s=>D.results.filter(r=>shown(r)&&r.sector===s).length;
   $("#secBar").innerHTML=`<button class="sec ${SECTOR?"":"on"}" data-sector="">All <b>${D.results.filter(shown).length}</b></button>`+
     SECT.map(([s,l])=>{const k=n(s);return`<button class="sec ${SECTOR===s?"on":""}" data-sector="${esc(s)}" ${k?"":"disabled"}>${l} <b>${k}</b></button>`}).join("");
 }
-function setSector(s){SECTOR=s||null;renderSectorBar();renderCards();renderSectors();renderTable()}
+function setSector(s){SECTOR=s||null;renderSectorBar();renderCards();renderLanes();renderSectors();renderTable()}
 
 /* ---------- chart (Apple Stocks style: line, no candles) ---------- */
 const RANGES=["1D","1W","1M","3M","1Y","3Y","5Y","10Y"];
@@ -963,7 +997,7 @@ $("#wlNew").onclick=async()=>{const f=(prompt("New folder name")||"").trim();if(
 $("#wtab").onclick=()=>$("#watch").scrollIntoView({behavior:"smooth",block:"start"});
 
 /* ---------- data ---------- */
-function renderAll(){renderRead();renderBandBar();renderSectorBar();renderCards();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results.filter(r=>bandOf(r)!=="MEGA"||extraordinary(r)),(D.summary||{}).news_tone,(D.summary||{}).researched)}
+function renderAll(){renderRead();renderBandBar();renderSectorBar();renderCards();renderLanes();renderSectors();renderRejects();renderTable();renderHero();shards.set(D.results.filter(r=>bandOf(r)!=="MEGA"||extraordinary(r)),(D.summary||{}).news_tone,(D.summary||{}).researched)}
 function renderHero(){const c=D.counts||{},S=D.summary||{};
   $("#heroN").innerHTML=`<b>${c.BUY||0}</b> to buy<span class="sep">/</span>${c.WATCH||0} watch<span class="sep">/</span>${c.AVOID||0} avoid`;
   $("#heroLbl").textContent=`${(S.hunt_total||0).toLocaleString()} screened · ${S.researched||0} researched · ${S.rejected||0} filtered out`}
