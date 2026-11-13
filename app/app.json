@@ -1,0 +1,9 @@
+{
+  "name": "Pulse",
+  "bundleId": "com.rytty.pulse.app",
+  "url": "http://127.0.0.1:8790/",
+  "cwd": ".",
+  "start": "python server.py",
+  "bootSeconds": 120,
+  "icon": "#fffaf3 #ef4436 P Georgia-Bold"
+}
